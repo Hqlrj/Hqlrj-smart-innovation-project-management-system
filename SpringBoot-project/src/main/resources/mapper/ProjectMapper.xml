@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.ProjectMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="projectResultMap" type="org.example.springbootproject.pojo.Project">
+        <id property="id" column="id"/>
+        <result property="projectType" column="project_type"/>
+        <result property="projectName" column="project_name"/>
+        <result property="projectIntro" column="project_intro"/>
+        <result property="innovationPoints" column="innovation_points"/>
+        <result property="projectBackground" column="project_background"/>
+        <result property="projectSignificance" column="project_significance"/>
+        <result property="marketDemandAnalysis" column="market_demand_analysis"/>
+        <result property="keyTechnology" column="key_technology"/>
+        <result property="planFilePath" column="plan_file_path"/>
+        <result property="planFileName" column="plan_file_name"/>
+        <result property="status" column="status"/>
+        <result property="applicantId" column="applicant_id"/>
+        <result property="applicantName" column="applicant_name"/>
+        <result property="auditorName" column="auditor_name"/>
+        <result property="rejectReason" column="reject_reason"/>
+        <result property="projectSpace" column="project_space"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="submitTime" column="submit_time"/>
+        <result property="applicantCollege" column="applicant_college"/>
+    </resultMap>
+
+    <!-- 查询项目列表（支持条件查询，关联用户表获取学院信息） -->
+    <!-- 注意：如果 project_space 字段不存在，请先执行 alter_project_table.sql 添加字段 -->
+    <select id="list" resultMap="projectResultMap">
+        SELECT p.id, p.project_type, p.project_name, p.project_intro, p.innovation_points, p.project_background,
+               p.project_significance, p.market_demand_analysis, p.key_technology, p.plan_file_path, p.plan_file_name,
+               p.status, p.applicant_id, p.applicant_name, p.auditor_name, p.reject_reason,
+               p.project_space,
+               p.create_time, p.update_time, p.submit_time,
+               u.college as applicant_college
+        FROM project p
+        LEFT JOIN user u ON p.applicant_id = u.id
+        <where>
+            <if test="projectName != null and projectName != ''">
+                AND p.project_name LIKE CONCAT('%', #{projectName}, '%')
+            </if>
+            <if test="projectType != null and projectType != ''">
+                AND p.project_type = #{projectType}
+            </if>
+            <if test="status != null and status != ''">
+                AND p.status = #{status}
+            </if>
+            <if test="projectSpace != null and projectSpace != ''">
+                AND p.project_space LIKE CONCAT('%', #{projectSpace}, '%')
+            </if>
+            <if test="applicantId != null">
+                AND p.applicant_id = #{applicantId}
+            </if>
+        </where>
+        ORDER BY p.create_time DESC
+    </select>
+
+    <!-- 根据ID查询项目（关联用户表获取学院信息） -->
+    <!-- 注意：如果 project_space 字段不存在，请先执行 alter_project_table.sql 添加字段 -->
+    <select id="getById" resultMap="projectResultMap">
+        SELECT p.id, p.project_type, p.project_name, p.project_intro, p.innovation_points, p.project_background,
+               p.project_significance, p.market_demand_analysis, p.key_technology, p.plan_file_path, p.plan_file_name,
+               p.status, p.applicant_id, p.applicant_name, p.auditor_name, p.reject_reason,
+               p.project_space,
+               p.create_time, p.update_time, p.submit_time,
+               u.college as applicant_college
+        FROM project p
+        LEFT JOIN user u ON p.applicant_id = u.id
+        WHERE p.id = #{id}
+    </select>
+
+    <!-- 新增项目 -->
+    <!-- 注意：如果 project_space 字段不存在，请先执行 alter_project_table.sql 添加字段 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project (project_type, project_name, project_intro, innovation_points, project_background,
+                            project_significance, market_demand_analysis, key_technology, plan_file_path, plan_file_name,
+                            status, applicant_id, applicant_name, auditor_name, reject_reason, project_space, create_time, submit_time)
+        VALUES (#{projectType}, #{projectName}, #{projectIntro}, #{innovationPoints}, #{projectBackground},
+                #{projectSignificance}, #{marketDemandAnalysis}, #{keyTechnology}, #{planFilePath}, #{planFileName},
+                #{status}, #{applicantId}, #{applicantName}, #{auditorName}, #{rejectReason}, #{projectSpace}, #{createTime}, #{submitTime})
+    </insert>
+
+    <!-- 更新项目 -->
+    <update id="update">
+        UPDATE project
+        <set>
+            <if test="projectType != null and projectType != ''">
+                project_type = #{projectType},
+            </if>
+            <if test="projectName != null and projectName != ''">
+                project_name = #{projectName},
+            </if>
+            <if test="projectIntro != null">
+                project_intro = #{projectIntro},
+            </if>
+            <if test="innovationPoints != null">
+                innovation_points = #{innovationPoints},
+            </if>
+            <if test="projectBackground != null">
+                project_background = #{projectBackground},
+            </if>
+            <if test="projectSignificance != null">
+                project_significance = #{projectSignificance},
+            </if>
+            <if test="marketDemandAnalysis != null">
+                market_demand_analysis = #{marketDemandAnalysis},
+            </if>
+            <if test="keyTechnology != null">
+                key_technology = #{keyTechnology},
+            </if>
+            <if test="planFilePath != null">
+                plan_file_path = #{planFilePath},
+            </if>
+            <if test="planFileName != null">
+                plan_file_name = #{planFileName},
+            </if>
+            <if test="status != null and status != ''">
+                status = #{status},
+            </if>
+            <if test="submitTime != null">
+                submit_time = #{submitTime},
+            </if>
+            <if test="auditorName != null">
+                auditor_name = #{auditorName},
+            </if>
+            <if test="rejectReason != null">
+                reject_reason = #{rejectReason},
+            </if>
+            <if test="projectSpace != null">
+                project_space = #{projectSpace},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除项目 -->
+    <delete id="delete">
+        DELETE FROM project WHERE id = #{id}
+    </delete>
+
+</mapper>

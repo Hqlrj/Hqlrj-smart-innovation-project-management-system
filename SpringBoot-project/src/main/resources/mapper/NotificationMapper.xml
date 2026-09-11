@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.NotificationMapper">
+
+    <resultMap id="notificationResultMap" type="org.example.springbootproject.pojo.Notification">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="type" column="type"/>
+        <result property="relatedId" column="related_id"/>
+        <result property="isRead" column="is_read"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- 根据用户ID查询通知列表（未读在前，按时间倒序） -->
+    <select id="listByUserId" resultMap="notificationResultMap">
+        SELECT id, user_id, title, content, type, related_id, is_read, create_time
+        FROM notification
+        WHERE user_id = #{userId}
+        ORDER BY is_read ASC, create_time DESC
+    </select>
+
+    <!-- 统计未读通知数量 -->
+    <select id="countUnread" resultType="int">
+        SELECT COUNT(*)
+        FROM notification
+        WHERE user_id = #{userId} AND is_read = 0
+    </select>
+
+    <!-- 新增通知 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO notification (user_id, title, content, type, related_id, create_time)
+        VALUES (#{userId}, #{title}, #{content}, #{type}, #{relatedId}, #{createTime})
+    </insert>
+
+    <!-- 标记单条通知为已读 -->
+    <update id="markAsRead">
+        UPDATE notification SET is_read = 1 WHERE id = #{id}
+    </update>
+
+    <!-- 标记用户所有通知为已读 -->
+    <update id="markAllAsRead">
+        UPDATE notification SET is_read = 1 WHERE user_id = #{userId} AND is_read = 0
+    </update>
+
+</mapper>

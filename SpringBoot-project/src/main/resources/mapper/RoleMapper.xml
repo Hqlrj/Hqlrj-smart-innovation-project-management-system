@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.RoleMapper">
+
+    <resultMap id="roleResultMap" type="org.example.springbootproject.pojo.Role">
+        <id property="id" column="id"/>
+        <result property="roleId" column="role_id"/>
+        <result property="roleName" column="role_name"/>
+        <result property="description" column="description"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <select id="list" resultMap="roleResultMap">
+        SELECT id, role_id, role_name, description, create_time, update_time
+        FROM role
+        <where>
+            <if test="searchText != null and searchText != ''">
+                AND (role_id LIKE CONCAT('%', #{searchText}, '%')
+                OR role_name LIKE CONCAT('%', #{searchText}, '%'))
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="getById" resultMap="roleResultMap">
+        SELECT id, role_id, role_name, description, create_time, update_time
+        FROM role
+        WHERE id = #{id}
+    </select>
+
+    <select id="getByRoleId" resultMap="roleResultMap">
+        SELECT id, role_id, role_name, description, create_time, update_time
+        FROM role
+        WHERE role_id = #{roleId}
+    </select>
+
+    <select id="getByRoleName" resultMap="roleResultMap">
+        SELECT id, role_id, role_name, description, create_time, update_time
+        FROM role
+        WHERE role_name = #{roleName}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO role (role_id, role_name, description, create_time, update_time)
+        VALUES (#{roleId}, #{roleName}, #{description}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="update">
+        UPDATE role
+        <set>
+            <if test="roleId != null and roleId != ''">
+                role_id = #{roleId},
+            </if>
+            <if test="roleName != null and roleName != ''">
+                role_name = #{roleName},
+            </if>
+            <if test="description != null">
+                description = #{description},
+            </if>
+            <if test="updateTime != null">
+                update_time = #{updateTime},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="delete">
+        DELETE FROM role WHERE id = #{id}
+    </delete>
+
+</mapper>
+

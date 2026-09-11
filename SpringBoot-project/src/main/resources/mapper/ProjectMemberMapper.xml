@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.ProjectMemberMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="projectMemberResultMap" type="org.example.springbootproject.pojo.ProjectMember">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="studentId" column="student_id"/>
+        <result property="name" column="name"/>
+        <result property="gender" column="gender"/>
+        <result property="phone" column="phone"/>
+        <result property="college" column="college"/>
+        <result property="className" column="class_name"/>
+        <result property="introduction" column="introduction"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <!-- 根据项目ID查询成员列表 -->
+    <select id="listByProjectId" resultMap="projectMemberResultMap">
+        SELECT id, project_id, student_id, name, gender, phone, college, class_name, introduction, create_time, update_time
+        FROM project_member
+        WHERE project_id = #{projectId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 根据ID查询成员 -->
+    <select id="getById" resultMap="projectMemberResultMap">
+        SELECT id, project_id, student_id, name, gender, phone, college, class_name, introduction, create_time, update_time
+        FROM project_member
+        WHERE id = #{id}
+    </select>
+
+    <!-- 新增成员 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_member (project_id, student_id, name, gender, phone, college, class_name, introduction, create_time)
+        VALUES (#{projectId}, #{studentId}, #{name}, #{gender}, #{phone}, #{college}, #{className}, #{introduction}, #{createTime})
+    </insert>
+
+    <!-- 批量新增成员 -->
+    <insert id="batchInsert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_member (project_id, student_id, name, gender, phone, college, class_name, introduction, create_time)
+        VALUES
+        <foreach collection="members" item="member" separator=",">
+            (#{member.projectId}, #{member.studentId}, #{member.name}, #{member.gender}, #{member.phone}, #{member.college}, #{member.className}, #{member.introduction}, #{member.createTime})
+        </foreach>
+    </insert>
+
+    <!-- 更新成员 -->
+    <update id="update">
+        UPDATE project_member
+        <set>
+            <if test="studentId != null and studentId != ''">
+                student_id = #{studentId},
+            </if>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="gender != null">
+                gender = #{gender},
+            </if>
+            <if test="phone != null">
+                phone = #{phone},
+            </if>
+            <if test="college != null">
+                college = #{college},
+            </if>
+            <if test="className != null">
+                class_name = #{className},
+            </if>
+            <if test="introduction != null">
+                introduction = #{introduction},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除成员 -->
+    <delete id="delete">
+        DELETE FROM project_member WHERE id = #{id}
+    </delete>
+
+    <!-- 根据项目ID删除所有成员 -->
+    <delete id="deleteByProjectId">
+        DELETE FROM project_member WHERE project_id = #{projectId}
+    </delete>
+
+</mapper>

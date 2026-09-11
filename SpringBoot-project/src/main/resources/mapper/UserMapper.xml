@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.UserMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="userResultMap" type="org.example.springbootproject.pojo.User">
+        <id property="id" column="id"/>
+        <result property="studentId" column="student_id"/>
+        <result property="name" column="name"/>
+        <result property="phone" column="phone"/>
+        <result property="roleId" column="role_id"/>
+        <result property="password" column="password"/>
+        <result property="role" column="role"/>
+        <result property="college" column="college"/>
+        <result property="avatar" column="avatar"/>
+        <result property="status" column="status"/>
+        <result property="createTime" column="create_time"/>
+        <result property="loginTime" column="login_time"/>
+    </resultMap>
+
+    <!-- 查询用户列表（支持条件查询） -->
+    <select id="list" resultMap="userResultMap">
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        FROM user
+        <where>
+            <!-- 动态SQL：根据传入参数决定是否添加查询条件 -->
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="phone != null and phone != ''">
+                AND phone LIKE CONCAT('%', #{phone}, '%')
+            </if>
+            <if test="role != null and role != ''">
+                AND role = #{role}
+            </if>
+            <if test="college != null and college != ''">
+                AND college = #{college}
+            </if>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据ID查询用户 -->
+    <select id="getById" resultMap="userResultMap">
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        FROM user
+        WHERE id = #{id}
+    </select>
+
+    <!-- 根据手机号查询用户 -->
+    <select id="getByPhone" resultMap="userResultMap">
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        FROM user WHERE phone = #{phone}
+    </select>
+
+    <!-- 根据学号查询用户 -->
+    <select id="getByStudentId" resultMap="userResultMap">
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        FROM user
+        WHERE student_id = #{studentId}
+    </select>
+
+    <!-- 新增用户 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user (student_id, name, phone, role_id, password, role, college, status, create_time)
+        VALUES (#{studentId}, #{name}, #{phone}, #{roleId}, #{password}, #{role}, #{college}, #{status}, #{createTime})
+    </insert>
+
+    <!-- 更新用户 -->
+    <update id="update">
+        UPDATE user
+        <set>
+            <if test="studentId != null and studentId != ''">
+                student_id = #{studentId},
+            </if>
+            <if test="name != null and name != ''">
+                name = #{name},
+            </if>
+            <if test="phone != null">
+                phone = #{phone},
+            </if>
+            <if test="roleId != null and roleId != ''">
+                role_id = #{roleId},
+            </if>
+            <if test="password != null and password != ''">
+                password = #{password},
+            </if>
+            <if test="role != null and role != ''">
+                role = #{role},
+            </if>
+            <if test="college != null">
+                college = #{college},
+            </if>
+            <if test="avatar != null">
+                avatar = #{avatar},
+            </if>
+            <if test="status != null and status != ''">
+                status = #{status},
+            </if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除用户 -->
+    <delete id="delete">
+        DELETE FROM user WHERE id = #{id}
+    </delete>
+
+    <!-- 更新登录时间 -->
+    <update id="updateLoginTime">
+        UPDATE user
+        SET login_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 更新密码 -->
+    <update id="updatePassword">
+        UPDATE user
+        SET password = #{password}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 查询所有已审批通过的用户 -->
+    <select id="listAllApproved" resultMap="userResultMap">
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        FROM user
+        WHERE status = '已审批'
+        ORDER BY create_time DESC
+    </select>
+
+</mapper>
+

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.ProjectAdvisorMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="advisorResultMap" type="org.example.springbootproject.pojo.ProjectAdvisor">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="name" column="name"/>
+        <result property="gender" column="gender"/>
+        <result property="phone" column="phone"/>
+        <result property="college" column="college"/>
+        <result property="introduction" column="introduction"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <!-- 根据项目ID查询指导老师列表 -->
+    <select id="listByProjectId" resultMap="advisorResultMap">
+        SELECT * FROM project_advisor
+        WHERE project_id = #{projectId}
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 新增指导老师 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_advisor (
+            project_id, name, gender, phone, college, introduction
+        ) VALUES (
+            #{projectId}, #{name}, #{gender}, #{phone}, #{college}, #{introduction}
+        )
+    </insert>
+
+    <!-- 更新指导老师 -->
+    <update id="update">
+        UPDATE project_advisor
+        SET name = #{name},
+            gender = #{gender},
+            phone = #{phone},
+            college = #{college},
+            introduction = #{introduction}
+        WHERE id = #{id}
+    </update>
+
+    <!-- 根据ID删除指导老师 -->
+    <delete id="deleteById">
+        DELETE FROM project_advisor WHERE id = #{id}
+    </delete>
+
+    <!-- 根据项目ID删除所有指导老师 -->
+    <delete id="deleteByProjectId">
+        DELETE FROM project_advisor WHERE project_id = #{projectId}
+    </delete>
+
+    <!-- 根据ID查询指导老师 -->
+    <select id="getById" resultMap="advisorResultMap">
+        SELECT * FROM project_advisor WHERE id = #{id}
+    </select>
+
+</mapper>
+
