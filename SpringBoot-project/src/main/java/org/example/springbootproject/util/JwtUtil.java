@@ -2,14 +2,11 @@ package org.example.springbootproject.util;
 
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * JWT工具类
@@ -35,20 +32,17 @@ public class JwtUtil {
      * 生成JWT Token
      */
     public String generateToken(Integer userId, String username, String role) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", userId);
-        claims.put("username", username);
-        claims.put("role", role);
-        
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + EXPIRATION_TIME);
 
         return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(username) // 主题：用户名
-                .setIssuedAt(now) // 签发时间
-                .setExpiration(expiryDate) // 过期时间
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256) // 签名算法和密钥
+                .claim("userId", userId)
+                .claim("username", username)
+                .claim("role", role)
+                .subject(username) // 主题：用户名
+                .issuedAt(now) // 签发时间
+                .expiration(expiryDate) // 过期时间
+                .signWith(getSigningKey())
                 .compact();
     }
 
@@ -56,11 +50,11 @@ public class JwtUtil {
      * 从Token中获取Claims（包含用户信息）
      */
     private Claims getClaimsFromToken(String token) {
-        return Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
     }
 
     /**

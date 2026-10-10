@@ -68,32 +68,31 @@
         style="width: 100%"
         :empty-text="'暂无数据'"
       >
-        <!-- 用 min-width 让表格在无滚动时自动撑满，避免右侧留白 -->
-        <el-table-column prop="projectName" label="项目名称" min-width="200" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="competitionName" label="比赛名称" min-width="260" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="competitionLevel" label="比赛级别" width="120" align="center" header-align="center" />
-        <el-table-column prop="awardLevel" label="获奖等级" width="120" align="center" header-align="center" />
-        <el-table-column prop="status" label="当前状态" width="120" align="center" header-align="center">
+        <el-table-column prop="projectName" label="项目名称" min-width="160" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="competitionName" label="比赛名称" min-width="180" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="competitionLevel" label="比赛级别" min-width="100" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="awardLevel" label="获奖等级" min-width="100" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="status" label="当前状态" min-width="100" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)" size="small">
               {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="awardCertificate" label="获奖证明" min-width="200" align="center" header-align="center">
+        <el-table-column prop="awardCertificate" label="获奖证明" min-width="140" align="center" header-align="center">
           <template #default="{ row }">
             <el-image
               v-if="row.awardCertificate"
               :src="getImageUrl(row.awardCertificate)"
               :preview-src-list="[getImageUrl(row.awardCertificate)]"
-              style="width: 100px; height: 100px; cursor: pointer"
+              style="width: 80px; height: 80px; cursor: pointer"
               fit="cover"
               :preview-teleported="true"
             />
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="300" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" min-width="260" align="center" header-align="center">
           <template #default="{ row }">
             <!-- 项目负责人：只有自己的项目显示修改、删除按钮，别人的只有详情 -->
             <template v-if="isProjectLeader">
@@ -854,10 +853,12 @@ onMounted(() => {
 .table-card {
   margin-bottom: 20px;
   background: white;
+  overflow: hidden;
 }
 
 .table-card :deep(.el-card__body) {
   padding: 0;
+  overflow-x: auto;
 }
 
 .pagination-container {
@@ -873,8 +874,8 @@ onMounted(() => {
   gap: 12px;
 }
 
-/* 表格样式 */
 :deep(.el-table) {
+  width: 100% !important;
   background: white;
 }
 
@@ -890,11 +891,6 @@ onMounted(() => {
 
 :deep(.el-table__body tr:hover > td) {
   background: white;
-}
-
-:deep(.el-table .cell) {
-  white-space: normal;
-  word-break: break-all;
 }
 
 /* 图片预览样式 */

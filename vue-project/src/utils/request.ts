@@ -9,8 +9,8 @@ import { ElMessage } from 'element-plus'
 
 // 创建 axios 实例
 const request = axios.create({
-  baseURL: '/api', // 通过 Vite 代理转发到后端
-  timeout: 5000 // 请求超时时间
+  baseURL: 'http://localhost:8080', // 直接使用后端地址，绕过代理
+  timeout: 30000 // 增加超时时间到30秒
 })
 
 // 请求拦截器
@@ -39,6 +39,11 @@ request.interceptors.request.use(
 // 响应拦截器
 request.interceptors.response.use(
   (response) => {
+    // 文件流（Word 预览/下载）直接返回 Blob
+    if (response.config.responseType === 'blob') {
+      return response.data
+    }
+
     // 统一处理响应数据
     const res = response.data
     

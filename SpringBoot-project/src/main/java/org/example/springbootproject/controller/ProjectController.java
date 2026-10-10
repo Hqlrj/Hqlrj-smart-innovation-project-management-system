@@ -1,20 +1,38 @@
 package org.example.springbootproject.controller;
 
+import org.example.springbootproject.pojo.AiReplyResponse;
+
 import jakarta.servlet.http.HttpServletRequest;
 import org.example.springbootproject.mapper.ProjectPlanMapper;
 import org.example.springbootproject.pojo.PageBean;
 import org.example.springbootproject.pojo.Project;
 import org.example.springbootproject.pojo.ProjectPlan;
 import org.example.springbootproject.pojo.Result;
+import org.example.springbootproject.pojo.StartReviewRequest;
+import org.example.springbootproject.pojo.StartReviewResponse;
+import org.example.springbootproject.pojo.PlanValidationResult;
 import org.example.springbootproject.service.NotificationService;
 import org.example.springbootproject.service.ProjectService;
 import org.example.springbootproject.service.UserService;
+import org.example.springbootproject.service.AiReviewService;
+import org.example.springbootproject.service.AiChatService;
+import org.example.springbootproject.service.DocumentParseService;
+import org.example.springbootproject.constant.AiReviewConstants;
+import org.example.springbootproject.util.FileValidationUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,6 +57,15 @@ public class ProjectController {
 
     @Autowired
     private ProjectPlanMapper projectPlanMapper;
+
+    @Autowired
+    private AiReviewService aiReviewService;
+
+    @Autowired
+    private DocumentParseService documentParseService;
+
+    @Autowired
+    private AiChatService aiChatService;
 
     // 文件上传路径（相对于项目根目录）
     private static final String UPLOAD_DIR = "uploads/project-plans/";
@@ -124,6 +151,94 @@ public class ProjectController {
     }
 
     /**
+     * 发起审核（人工/AI模式）
+     */
+    @PostMapping("/{id}/start-review")
+    public Result<StartReviewResponse> startReview(@PathVariable Integer id,
+                                                    @RequestBody StartReviewRequest request,
+                                                    HttpServletRequest httpRequest) {
+        // 从JWT中获取当前用户ID
+        Integer userId = (Integer) httpRequest.getAttribute("userId");
+        
+        // 调用AI评审服务
+        StartReviewResponse response = aiReviewService.startReview(id, request, userId);
+        
+        if (response.getTaskId() == null && response.getMessage() != null) {
+            // 失败情况
+            return Result.error(response.getMessage());
+        }
+        
+        return Result.success(response);
+    }
+
+    /**
+     * 获取AI评审任务详情
+     */
+    @GetMapping("/ai-review/{taskId}")
+    public Result<org.example.springbootproject.pojo.AiReviewTask> getAiReviewTask(@PathVariable Integer taskId) {
+        org.example.springbootproject.pojo.AiReviewTask task = aiReviewService.getAiReviewTask(taskId);
+        if (task == null) {
+            return Result.error("任务不存在");
+        }
+        return Result.success(task);
+    }
+
+    /**
+     * 获取AI评审章节详情
+     */
+    @GetMapping("/ai-review/{taskId}/sections")
+    public Result<List<org.example.springbootproject.pojo.AiReviewSection>> getAiReviewSections(@PathVariable Integer taskId) {
+        List<org.example.springbootproject.pojo.AiReviewSection> sections = aiReviewService.getAiReviewSections(taskId);
+        return Result.success(sections);
+    }
+
+    /**
+     * AI聊天接口
+     */
+    @PostMapping("/ai-chat")
+    public Result<org.example.springbootproject.pojo.AiChatResponse> aiChat(@RequestBody org.example.springbootproject.pojo.AiChatRequest request, HttpServletRequest httpRequest) {
+        try {
+            System.out.println("AI聊天接口被调用");
+            
+            // 从JWT中获取当前用户ID
+            Integer userId = (Integer) httpRequest.getAttribute("userId");
+            System.out.println("用户ID: " + userId);
+            
+            if (userId == null) {
+                return Result.error("用户未登录");
+            }
+            
+            // 获取用户的API Key
+            var user = userService.getById(userId);
+            System.out.println("用户信息: " + user);
+            
+            if (user == null) {
+                return Result.error("用户不存在");
+            }
+            
+            String userApiKey = user.getApiKey();
+            System.out.println("API Key是否存在: " + (userApiKey != null && !userApiKey.trim().isEmpty()));
+            
+            if (userApiKey == null || userApiKey.trim().isEmpty()) {
+                return Result.error("请先在设置中配置API Key");
+            }
+            
+            System.out.println("开始调用AI服务");
+            org.example.springbootproject.pojo.AiChatResponse response = aiChatService.chatWithUserKey(request, userApiKey);
+            System.out.println("AI服务响应: " + response);
+            
+            if (!response.isSuccess()) {
+                return Result.error(response.getError());
+            }
+            return Result.success(response);
+        } catch (Exception e) {
+            System.out.println("AI聊天接口异常: " + e.getMessage());
+            e.printStackTrace();
+            return Result.error("AI聊天失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 上传计划书文件（支持多文件上传）
      * 所有用户都可以上传
      */
@@ -157,20 +272,17 @@ public class ProjectController {
 
             // 处理每个文件
             for (MultipartFile file : files) {
+                String originalFilename = file.getOriginalFilename();
+                
                 if (file.isEmpty()) {
                     errors.add("文件为空，跳过");
                     continue;
                 }
 
-                // 检查文件类型（允许Word文档和PDF）
-                String originalFilename = file.getOriginalFilename();
-                if (originalFilename == null) {
-                    errors.add("文件名不能为空");
-                    continue;
-                }
-                String lowerFilename = originalFilename.toLowerCase();
-                if (!lowerFilename.endsWith(".doc") && !lowerFilename.endsWith(".docx") && !lowerFilename.endsWith(".pdf")) {
-                    errors.add(originalFilename + ": 只支持上传Word文档（.doc或.docx格式）或PDF文件（.pdf格式）");
+                // 使用文件合法性检查工具类（第3步集成）
+                PlanValidationResult validationResult = FileValidationUtil.validateFile(file);
+                if (!validationResult.isValid()) {
+                    errors.add(originalFilename + ": " + validationResult.getErrorMessage());
                     continue;
                 }
 
@@ -214,12 +326,21 @@ public class ProjectController {
                     plan.setFilePath(normalizedPath);
                     plan.setFileName(originalFilename);
                     plan.setFileSize(file.getSize());
+                    plan.setFileHash(validationResult.getFileHash()); // 保存文件指纹
                     plan.setCreateTime(LocalDateTime.now());
 
                     // 如果提供了projectId，保存到数据库
                     if (projectId != null) {
                         try {
                             projectPlanMapper.insert(plan);
+                            
+                            // 同时更新项目表中的计划书路径（取第一个计划书）
+                            Project project = projectService.getById(projectId);
+                            if (project != null) {
+                                project.setPlanFilePath(normalizedPath);
+                                project.setPlanFileName(originalFilename);
+                                projectService.update(project);
+                            }
                         } catch (Exception e) {
                             // 数据库保存失败，删除已上传的文件
                             if (targetFile.exists()) {
@@ -284,10 +405,90 @@ public class ProjectController {
             // 删除数据库记录
             projectPlanMapper.delete(id);
 
+            // 更新项目表中的计划书路径（如果删除的是当前项目关联的计划书）
+            if (plan.getProjectId() != null) {
+                Project project = projectService.getById(plan.getProjectId());
+                if (project != null) {
+                    // 检查该项目是否还有其他计划书
+                    List<ProjectPlan> remainingPlans = projectPlanMapper.listByProjectId(plan.getProjectId());
+                    if (remainingPlans.isEmpty()) {
+                        // 如果没有其他计划书，清空项目表中的计划书信息
+                        project.setPlanFilePath(null);
+                        project.setPlanFileName(null);
+                    } else {
+                        // 如果还有其他计划书，使用第一个计划书的信息
+                        ProjectPlan firstPlan = remainingPlans.get(0);
+                        project.setPlanFilePath(firstPlan.getFilePath());
+                        project.setPlanFileName(firstPlan.getFileName());
+                    }
+                    projectService.update(project);
+                }
+            }
+
             return Result.success();
         } catch (Exception e) {
             return Result.error("删除失败：" + e.getMessage());
         }
+    }
+
+    /**
+     * 获取计划书原始文件流（前端 docx-preview 在线浏览用）
+     */
+    @GetMapping("/plan/{id}/file")
+    public ResponseEntity<Resource> getPlanFile(@PathVariable Integer id) {
+        ProjectPlan plan = projectPlanMapper.getById(id);
+        if (plan == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return buildPlanFileResponse(plan.getFilePath(), plan.getFileName());
+    }
+
+    /**
+     * 获取项目关联计划书原始文件流（兼容旧数据）
+     */
+    @GetMapping("/{id}/plan-file")
+    public ResponseEntity<Resource> getProjectPlanFile(@PathVariable Integer id) {
+        Project project = projectService.getById(id);
+        if (project == null) {
+            return ResponseEntity.notFound().build();
+        }
+        List<ProjectPlan> plans = projectPlanMapper.listByProjectId(id);
+        if (plans != null && !plans.isEmpty()) {
+            ProjectPlan plan = plans.get(0);
+            return buildPlanFileResponse(plan.getFilePath(), plan.getFileName());
+        }
+        if (project.getPlanFilePath() == null || project.getPlanFilePath().isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        return buildPlanFileResponse(project.getPlanFilePath(), project.getPlanFileName());
+    }
+
+    private ResponseEntity<Resource> buildPlanFileResponse(String filePath, String fileName) {
+        if (filePath == null || filePath.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        String projectRoot = System.getProperty("user.dir");
+        File file = new File(filePath);
+        if (!file.isAbsolute()) {
+            file = new File(projectRoot, filePath);
+        }
+        if (!file.exists() || !file.isFile()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String name = (fileName != null && !fileName.isBlank()) ? fileName : file.getName();
+        String lower = name.toLowerCase();
+        MediaType mediaType = lower.endsWith(".doc")
+                ? MediaType.parseMediaType("application/msword")
+                : MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+
+        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+        Resource resource = new FileSystemResource(file);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedName)
+                .contentType(mediaType)
+                .contentLength(file.length())
+                .body(resource);
     }
 
     /**
@@ -357,5 +558,21 @@ public class ProjectController {
         Integer userId = (Integer) request.getAttribute("userId");
         PageBean<Project> pageBean = projectService.list(1, 1000, null, null, null, null, userId);
         return Result.success(pageBean.getList());
+    }
+
+    /**
+     * 测试文档解析接口（第4步测试用）
+     * 解析指定路径的.docx文档
+     */
+    @GetMapping("/test-parse-document")
+    public Result<org.example.springbootproject.pojo.DocumentParseResult> testParseDocument(
+            @RequestParam String filePath) {
+        try {
+            org.example.springbootproject.pojo.DocumentParseResult result = 
+                documentParseService.parseDocument(filePath);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error("文档解析失败：" + e.getMessage());
+        }
     }
 }

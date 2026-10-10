@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>测试AI聊天接口</title>
+</head>
+<body>
+    <h1>测试AI聊天接口</h1>
+    <button onclick="testApiKey()">测试获取API Key</button>
+    <button onclick="testAiChat()">测试AI聊天</button>
+    <div id="result"></div>
+
+    <script>
+        const token = '你的token'; // 需要先登录获取token
+        
+        async function testApiKey() {
+            try {
+                const response = await fetch('http://localhost:8080/users/api-key', {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('result').innerHTML = '<pre>错误: ' + error.message + '</pre>';
+            }
+        }
+
+        async function testAiChat() {
+            try {
+                const response = await fetch('http://localhost:8080/projects/ai-chat', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: '你好',
+                        conversationId: ''
+                    })
+                });
+                const data = await response.json();
+                document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                document.getElementById('result').innerHTML = '<pre>错误: ' + error.message + '</pre>';
+            }
+        }
+    </script>
+</body>
+</html>

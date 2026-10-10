@@ -203,5 +203,86 @@ public class UserController {
             return Result.error("头像上传失败：" + e.getMessage());
         }
     }
+    
+    /**
+     * 更新用户API Key
+     */
+    @PostMapping("/api-key")
+    public Result<Void> updateApiKey(@RequestBody java.util.Map<String, String> requestBody, jakarta.servlet.http.HttpServletRequest httpRequest) {
+        String apiKey = requestBody.get("apiKey");
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            return Result.error("API Key不能为空");
+        }
+        
+        // 从JWT中获取当前用户ID
+        Integer userId = (Integer) httpRequest.getAttribute("userId");
+        
+        // 更新用户的API Key
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        
+        user.setApiKey(apiKey.trim());
+        userService.update(user);
+        
+        return Result.success();
+    }
+    
+    /**
+     * 获取当前用户的API Key（脱敏显示）
+     */
+    @GetMapping("/api-key")
+    public Result<java.util.Map<String, String>> getApiKey(jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 从JWT中获取当前用户ID
+        Integer userId = (Integer) httpRequest.getAttribute("userId");
+        
+        // 获取用户的API Key
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        
+        String apiKey = user.getApiKey();
+        java.util.Map<String, String> result = new java.util.HashMap<>();
+        
+        if (apiKey != null && !apiKey.isEmpty()) {
+            // 脱敏显示，只显示前8位和后4位
+            if (apiKey.length() > 12) {
+                String masked = apiKey.substring(0, 8) + "****" + apiKey.substring(apiKey.length() - 4);
+                result.put("maskedKey", masked);
+                result.put("hasKey", "true");
+            } else {
+                result.put("maskedKey", "****");
+                result.put("hasKey", "true");
+            }
+        } else {
+            result.put("maskedKey", "");
+            result.put("hasKey", "false");
+        }
+        
+        return Result.success(result);
+    }
+    
+    /**
+     * 删除用户API Key
+     */
+    @DeleteMapping("/api-key")
+    public Result<Void> deleteApiKey(jakarta.servlet.http.HttpServletRequest httpRequest) {
+        // 从JWT中获取当前用户ID
+        Integer userId = (Integer) httpRequest.getAttribute("userId");
+        
+        // 获取用户的API Key
+        User user = userService.getById(userId);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        
+        // 清空API Key
+        user.setApiKey(null);
+        userService.update(user);
+        
+        return Result.success();
+    }
 }
 

@@ -169,6 +169,7 @@
                 <div class="file-info">
                   <div class="file-name">{{ plan.fileName }}</div>
                   <div class="file-actions">
+                    <el-button type="primary" :icon="View" @click="handlePreviewPlan(plan)">在线预览</el-button>
                     <el-button type="success" :icon="Document" @click="handleDownloadPlanByPlan(plan)">下载文件</el-button>
                   </div>
                 </div>
@@ -186,6 +187,7 @@
               <div class="file-info">
                 <div class="file-name">{{ project.planFileName }}</div>
                 <div class="file-actions">
+                  <el-button type="primary" :icon="View" @click="handlePreviewProjectPlan">在线预览</el-button>
                   <el-button type="success" :icon="Document" @click="handleDownloadPlan">下载文件</el-button>
                 </div>
               </div>
@@ -282,14 +284,22 @@
         </div>
       </el-tab-pane>
     </el-tabs>
+
+    <WordPreviewDialog
+      v-model="previewVisible"
+      :file-name="previewFileName"
+      :plan-id="previewPlanId"
+      :project-id="previewProjectId"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Document, Trophy, InfoFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Trophy, InfoFilled, View } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
+import WordPreviewDialog from '@/components/WordPreviewDialog.vue'
 import {
   getProjectById,
   type Project,
@@ -369,6 +379,30 @@ const getPlanFileUrl = (path: string) => {
   }
   // 否则拼接API地址
   return `/api/${path}`
+}
+
+const previewVisible = ref(false)
+const previewFileName = ref('')
+const previewPlanId = ref<number | null>(null)
+const previewProjectId = ref<number | null>(null)
+
+const handlePreviewPlan = (plan: ProjectPlan) => {
+  previewFileName.value = plan.fileName || '计划书'
+  previewPlanId.value = plan.id ?? null
+  previewProjectId.value = plan.id ? null : (project.value?.id ?? null)
+  if (!previewPlanId.value && !previewProjectId.value) {
+    ElMessage.warning('暂无可预览的计划书')
+    return
+  }
+  previewVisible.value = true
+}
+
+const handlePreviewProjectPlan = () => {
+  if (!project.value?.id) return
+  previewFileName.value = project.value.planFileName || '计划书'
+  previewPlanId.value = null
+  previewProjectId.value = project.value.id
+  previewVisible.value = true
 }
 
 // 下载计划书（从 planFilePath 和 planFileName）
@@ -806,5 +840,6 @@ onMounted(() => {
   border-bottom: 1px solid #f0f0f0;
   background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
 }
+
 </style>
 

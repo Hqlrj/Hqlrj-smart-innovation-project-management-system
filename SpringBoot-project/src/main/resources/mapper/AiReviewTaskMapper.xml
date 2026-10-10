@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.AiReviewTaskMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="aiReviewTaskResultMap" type="org.example.springbootproject.pojo.AiReviewTask">
+        <id property="id" column="id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="planId" column="plan_id"/>
+        <result property="status" column="status"/>
+        <result property="reviewMode" column="review_mode"/>
+        <result property="mode" column="mode"/>
+        <result property="userId" column="user_id"/>
+        <result property="sectionTotal" column="section_total"/>
+        <result property="sectionDone" column="section_done"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="grade" column="grade"/>
+        <result property="summary" column="summary"/>
+        <result property="fileHash" column="file_hash"/>
+        <result property="modelName" column="model_name"/>
+        <result property="promptVersion" column="prompt_version"/>
+        <result property="tokenInput" column="token_input"/>
+        <result property="tokenOutput" column="token_output"/>
+        <result property="durationMs" column="duration_ms"/>
+        <result property="errorMsg" column="error_msg"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="endTime" column="end_time"/>
+    </resultMap>
+
+    <!-- 根据ID查询任务 -->
+    <select id="getById" resultMap="aiReviewTaskResultMap">
+        SELECT id, project_id, plan_id, status, review_mode, mode, user_id, section_total, section_done,
+               total_score, grade, summary, file_hash, model_name, prompt_version,
+               token_input, token_output, duration_ms, error_msg, created_by,
+               create_time, update_time, end_time
+        FROM ai_review_task
+        WHERE id = #{id}
+    </select>
+
+    <!-- 根据项目ID查询任务列表 -->
+    <select id="listByProjectId" resultMap="aiReviewTaskResultMap">
+        SELECT id, project_id, plan_id, status, review_mode, mode, user_id, section_total, section_done,
+               total_score, grade, summary, file_hash, model_name, prompt_version,
+               token_input, token_output, duration_ms, error_msg, created_by,
+               create_time, update_time, end_time
+        FROM ai_review_task
+        WHERE project_id = #{projectId}
+        ORDER BY create_time DESC
+    </select>
+
+    <!-- 根据项目ID查询最新的进行中任务 -->
+    <select id="getLatestPendingTask" resultMap="aiReviewTaskResultMap">
+        SELECT id, project_id, plan_id, status, review_mode, mode, user_id, section_total, section_done,
+               total_score, grade, summary, file_hash, model_name, prompt_version,
+               token_input, token_output, duration_ms, error_msg, created_by,
+               create_time, update_time, end_time
+        FROM ai_review_task
+        WHERE project_id = #{projectId}
+          AND status IN ('PENDING', 'PARSING', 'REVIEWING', 'SUMMARIZING')
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <!-- 新增任务 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_review_task (project_id, plan_id, status, review_mode, section_total, section_done,
+                                    created_by, create_time, user_id, mode)
+        VALUES (#{projectId}, #{planId}, #{status}, #{reviewMode}, #{sectionTotal}, #{sectionDone},
+                #{createdBy}, #{createTime}, #{userId}, #{mode})
+    </insert>
+
+    <!-- 更新任务状态 -->
+    <update id="updateStatus">
+        UPDATE ai_review_task
+        SET status = #{status},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 更新任务 -->
+    <update id="update">
+        UPDATE ai_review_task
+        SET status = #{status},
+            end_time = #{endTime},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 更新任务进度 -->
+    <update id="updateProgress">
+        UPDATE ai_review_task
+        SET section_done = #{sectionDone},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 更新任务结果 -->
+    <update id="updateResult">
+        UPDATE ai_review_task
+        SET status = #{status},
+            section_total = #{sectionTotal},
+            section_done = #{sectionDone},
+            total_score = #{totalScore},
+            grade = #{grade},
+            summary = #{summary},
+            file_hash = #{fileHash},
+            model_name = #{modelName},
+            prompt_version = #{promptVersion},
+            token_input = #{tokenInput},
+            token_output = #{tokenOutput},
+            duration_ms = #{durationMs},
+            end_time = #{endTime},
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 记录任务失败 -->
+    <update id="recordFailure">
+        UPDATE ai_review_task
+        SET status = 'FAILED',
+            error_msg = #{errorMsg},
+            end_time = NOW(),
+            update_time = NOW()
+        WHERE id = #{id}
+    </update>
+
+    <!-- 删除任务 -->
+    <delete id="delete">
+        DELETE FROM ai_review_task WHERE id = #{id}
+    </delete>
+
+</mapper>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.AiReviewSectionMapper">
+
+    <!-- 结果映射：将数据库字段映射到Java对象属性 -->
+    <resultMap id="aiReviewSectionResultMap" type="org.example.springbootproject.pojo.AiReviewSection">
+        <id property="id" column="id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="sectionTitle" column="section_title"/>
+        <result property="sectionLevel" column="section_level"/>
+        <result property="charCount" column="char_count"/>
+        <result property="score" column="score"/>
+        <result property="dimensions" column="dimensions"/>
+        <result property="strengths" column="strengths"/>
+        <result property="weaknesses" column="weaknesses"/>
+        <result property="risks" column="risks"/>
+        <result property="suggestions" column="suggestions"/>
+        <result property="rawResponse" column="raw_response"/>
+        <result property="status" column="status"/>
+        <result property="errorMsg" column="error_msg"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <!-- 根据任务ID查询章节列表 -->
+    <select id="listByTaskId" resultMap="aiReviewSectionResultMap">
+        SELECT id, task_id, sort_order, section_title, section_level, char_count, score,
+               dimensions, strengths, weaknesses, risks, suggestions, raw_response,
+               status, error_msg, create_time
+        FROM ai_review_section
+        WHERE task_id = #{taskId}
+        ORDER BY sort_order
+    </select>
+
+    <!-- 根据ID查询章节 -->
+    <select id="getById" resultMap="aiReviewSectionResultMap">
+        SELECT id, task_id, sort_order, section_title, section_level, char_count, score,
+               dimensions, strengths, weaknesses, risks, suggestions, raw_response,
+               status, error_msg, create_time
+        FROM ai_review_section
+        WHERE id = #{id}
+    </select>
+
+    <!-- 新增章节记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_review_section (task_id, sort_order, section_title, section_level, char_count, score,
+                                      dimensions, strengths, weaknesses, risks, suggestions, raw_response,
+                                      status, error_msg, create_time)
+        VALUES (#{taskId}, #{sortOrder}, #{sectionTitle}, #{sectionLevel}, #{charCount}, #{score},
+                #{dimensions}, #{strengths}, #{weaknesses}, #{risks}, #{suggestions}, #{rawResponse},
+                #{status}, #{errorMsg}, #{createTime})
+    </insert>
+
+    <!-- 删除章节 -->
+    <delete id="delete">
+        DELETE FROM ai_review_section WHERE id = #{id}
+    </delete>
+
+</mapper>

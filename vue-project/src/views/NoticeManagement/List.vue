@@ -21,9 +21,9 @@
         :empty-text="'暂无公告'"
         @row-dblclick="handleRowDblClick"
       >
-        <el-table-column prop="title" label="标题" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="title" label="标题" min-width="160" align="center" header-align="center" show-overflow-tooltip />
         <!-- 内容列：只显示“查看”按钮，不直接展示内容 -->
-        <el-table-column label="内容" width="120" align="center">
+        <el-table-column label="内容" min-width="100" align="center" header-align="center">
           <template #default="{ row }">
             <el-button
               type="primary"
@@ -36,17 +36,17 @@
             </el-button>
           </template>
         </el-table-column>
-        <el-table-column prop="publisherName" label="发布人" width="120" align="center" />
-        <el-table-column prop="publisherRole" label="角色" width="120" align="center" />
-        <el-table-column prop="createTime" label="发布时间" width="180" align="center" />
-        <el-table-column prop="isTop" label="置顶" width="80" align="center">
+        <el-table-column prop="publisherName" label="发布人" min-width="120" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="publisherRole" label="角色" min-width="110" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="createTime" label="发布时间" min-width="170" align="center" header-align="center" />
+        <el-table-column prop="isTop" label="置顶" min-width="80" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag v-if="row.isTop === 1" type="danger" size="small">置顶</el-tag>
             <span v-else>-</span>
           </template>
         </el-table-column>
         <!-- 操作列：删除（管理员可删所有，其他只能删自己发布的） -->
-        <el-table-column label="操作" width="120" align="center" fixed="right">
+        <el-table-column label="操作" min-width="100" align="center" header-align="center">
           <template #default="{ row }">
             <el-button
               v-if="canDelete(row)"

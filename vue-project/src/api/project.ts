@@ -182,6 +182,20 @@ export const deletePlan = (id: number) => {
 }
 
 /**
+ * 获取计划书原始文件（docx-preview 在线浏览）
+ */
+export const getPlanFileBlob = (id: number) => {
+  return request.get(`/projects/plan/${id}/file`, { responseType: 'blob' })
+}
+
+/**
+ * 获取项目关联计划书原始文件（兼容旧数据）
+ */
+export const getProjectPlanFileBlob = (projectId: number) => {
+  return request.get(`/projects/${projectId}/plan-file`, { responseType: 'blob' })
+}
+
+/**
  * 下载计划书模板
  */
 export const downloadTemplate = () => {

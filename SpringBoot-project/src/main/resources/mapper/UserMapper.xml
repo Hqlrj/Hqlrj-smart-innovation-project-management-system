@@ -16,13 +16,14 @@
         <result property="college" column="college"/>
         <result property="avatar" column="avatar"/>
         <result property="status" column="status"/>
+        <result property="apiKey" column="api_key"/>
         <result property="createTime" column="create_time"/>
         <result property="loginTime" column="login_time"/>
     </resultMap>
 
     <!-- 查询用户列表（支持条件查询） -->
     <select id="list" resultMap="userResultMap">
-        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, api_key, create_time, login_time
         FROM user
         <where>
             <!-- 动态SQL：根据传入参数决定是否添加查询条件 -->
@@ -47,20 +48,20 @@
 
     <!-- 根据ID查询用户 -->
     <select id="getById" resultMap="userResultMap">
-        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, api_key, create_time, login_time
         FROM user
         WHERE id = #{id}
     </select>
 
     <!-- 根据手机号查询用户 -->
     <select id="getByPhone" resultMap="userResultMap">
-        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, api_key, create_time, login_time
         FROM user WHERE phone = #{phone}
     </select>
 
     <!-- 根据学号查询用户 -->
     <select id="getByStudentId" resultMap="userResultMap">
-        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, api_key, create_time, login_time
         FROM user
         WHERE student_id = #{studentId}
     </select>
@@ -102,6 +103,9 @@
             <if test="status != null and status != ''">
                 status = #{status},
             </if>
+            <if test="apiKey != null or apiKey == null">
+                api_key = #{apiKey},
+            </if>
         </set>
         WHERE id = #{id}
     </update>
@@ -127,7 +131,7 @@
 
     <!-- 查询所有已审批通过的用户 -->
     <select id="listAllApproved" resultMap="userResultMap">
-        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, create_time, login_time
+        SELECT id, student_id, name, phone, role_id, password, role, college, avatar, status, api_key, create_time, login_time
         FROM user
         WHERE status = '已审批'
         ORDER BY create_time DESC

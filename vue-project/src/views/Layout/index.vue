@@ -151,6 +151,9 @@
             </div>
           </div>
 
+          <!-- AI智能助手：除申请人外可见 -->
+          <AiChatWidget v-if="canAccessAiChat" />
+
           <!-- 项目空间功能已注释 -->
           <!-- <div v-if="canAccessMenu('项目空间')" class="nav-section">
             <div class="nav-section-header" @click="toggleSection('space')">
@@ -195,6 +198,12 @@
               <el-icon :size="20" style="cursor:pointer;color:#333"><Bell /></el-icon>
             </el-badge>
           </div>
+          
+          <!-- API管理按钮：除申请人外可见 -->
+          <div v-if="canAccessAiChat" class="api-management-btn" @click="handleOpenApiKeyDialog">
+            <el-icon :size="20" style="cursor:pointer;color:#333"><Setting /></el-icon>
+          </div>
+          
           <div class="header-right">
             <el-dropdown trigger="click" @command="handleUserCommand">
               <div class="user-profile">
@@ -278,6 +287,10 @@
         </el-main>
       </el-container>
     </el-container>
+    
+    <!-- AI聊天对话框：除申请人外可见 -->
+    <AiChatDialog v-if="canAccessAiChat" />
+    
     <!-- 个人中心弹窗 -->
     <el-dialog 
       v-model="showProfileDialog" 
@@ -462,6 +475,48 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- API Key管理弹窗：除申请人外可见 -->
+    <el-dialog v-if="canAccessAiChat" v-model="showApiKeyDialog" title="API Key管理" width="500px" @close="resetApiKeyForm">
+      <div class="dialog-body">
+        <el-alert
+          title="提示"
+          type="info"
+          :closable="false"
+          style="margin-bottom: 20px"
+        >
+          请输入您的DeepSeek API Key以使用AI聊天功能。API Key仅保存在您的账户中，其他用户无法访问。
+        </el-alert>
+        
+        <el-form label-width="100px">
+          <el-form-item label="当前状态">
+            <el-tag :type="hasApiKey ? 'success' : 'warning'">
+              {{ hasApiKey ? '已配置' : '未配置' }}
+            </el-tag>
+          </el-form-item>
+          
+          <el-form-item v-if="hasApiKey" label="当前Key">
+            <el-input v-model="maskedApiKey" disabled />
+          </el-form-item>
+          
+          <el-form-item label="API Key">
+            <el-input 
+              v-model="apiKeyForm.apiKey" 
+              type="password" 
+              show-password 
+              placeholder="请输入DeepSeek API Key"
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="() => { showApiKeyDialog = false; resetApiKeyForm() }">取消</el-button>
+          <el-button v-if="hasApiKey" type="danger" @click="handleDeleteApiKey" :loading="apiKeyLoading">删除</el-button>
+          <el-button type="primary" :loading="apiKeyLoading" @click="handleApiKeyConfirm">保存</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -474,8 +529,11 @@ import { useLoginStore } from '@/stores/login'
 import { changePassword, type ChangePasswordRequest, getUserById, updateUser, uploadAvatar, type User } from '@/api/user'
 import { hasMenuPermission, hasMenuItemPermission } from '@/utils/permission'
 import { getNotificationList, getUnreadCount, markAsRead, markAllRead, type Notification } from '@/api/notification'
+import request from '@/utils/request'
 import { onUnmounted } from 'vue'
-import { Bell } from '@element-plus/icons-vue'
+import { Bell, Setting } from '@element-plus/icons-vue'
+import AiChatWidget from '@/components/AiChatWidget.vue'
+import AiChatDialog from '@/components/AiChatDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -493,6 +551,14 @@ const canAccessMenu = (menuName: string) => {
 const canAccessMenuItem = (routeName: string) => {
   return hasMenuItemPermission(userRole.value, routeName)
 }
+
+// 检查是否可以访问AI聊天功能（除了特定角色不能访问，其他角色都可以）
+const canAccessAiChat = computed(() => {
+  const role = loginStore.userInfo?.role
+  // 以下角色不能访问AI助手功能
+  const restrictedRoles = ['申请人', '项目申请人', '学生申请人', '项目负责人', '项目成员']
+  return !restrictedRoles.includes(role || '')
+})
 
 // 初始化所有分组为折叠状态（默认不自动打开）
 const sections = reactive({
@@ -515,7 +581,8 @@ const headerAvatarUrl = computed(() => {
     }
     return avatar
   }
-  return 'https://via.placeholder.com/40/cccccc/ffffff?text=User'
+  // 使用本地默认头像，避免网络连接问题
+  return '/api/uploads/avatars/default-avatar.png'
 })
 
 // 处理顶部头像加载错误
@@ -901,6 +968,15 @@ const passwordForm = ref({
   confirmPassword: ''
 })
 
+// API Key管理弹窗
+const showApiKeyDialog = ref(false)
+const apiKeyLoading = ref(false)
+const hasApiKey = ref(false)
+const maskedApiKey = ref('')
+const apiKeyForm = ref({
+  apiKey: ''
+})
+
 const resetPasswordForm = () => {
   passwordForm.value = {
     oldPassword: '',
@@ -937,6 +1013,83 @@ const handlePasswordConfirm = async () => {
     ElMessage.error(error?.response?.data?.msg || '修改密码失败')
   } finally {
     passwordLoading.value = false
+  }
+}
+
+// API Key管理相关方法
+const handleOpenApiKeyDialog = async () => {
+  try {
+    const response = await request.get('/users/api-key')
+    hasApiKey.value = response.hasKey === 'true' || response.hasKey === true
+    maskedApiKey.value = response.maskedKey || ''
+  } catch (error: any) {
+    console.error('加载API Key失败:', error)
+  }
+  showApiKeyDialog.value = true
+}
+
+const loadApiKey = async () => {
+  try {
+    const response = await request.get('/users/api-key')
+    hasApiKey.value = response.hasKey === 'true' || response.hasKey === true
+    maskedApiKey.value = response.maskedKey || ''
+  } catch (error: any) {
+    console.error('加载API Key失败:', error)
+  }
+}
+
+const resetApiKeyForm = () => {
+  apiKeyForm.value = {
+    apiKey: ''
+  }
+}
+
+const handleApiKeyConfirm = async () => {
+  if (!apiKeyForm.value.apiKey.trim()) {
+    ElMessage.error('API Key不能为空')
+    return
+  }
+  
+  apiKeyLoading.value = true
+  try {
+    console.log('开始保存API Key:', apiKeyForm.value.apiKey.trim())
+    const response = await request.post('/users/api-key', {
+      apiKey: apiKeyForm.value.apiKey.trim()
+    })
+    console.log('API Key保存响应:', response)
+    ElMessage.success('API Key保存成功')
+    showApiKeyDialog.value = false
+    // 重新加载API Key状态
+    await loadApiKey()
+  } catch (error: any) {
+    console.error('API Key保存错误详情:', error)
+    console.error('错误响应:', error.response)
+    console.error('错误消息:', error.message)
+    const errorMsg = error?.response?.data?.msg || error?.response?.data?.message || error?.message || '保存API Key失败'
+    ElMessage.error(errorMsg)
+  } finally {
+    apiKeyLoading.value = false
+  }
+}
+
+const handleDeleteApiKey = async () => {
+  try {
+    await ElMessageBox.confirm('确定要删除API Key吗？删除后将无法使用AI聊天功能。', '提示', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    apiKeyLoading.value = true
+    await request.delete('/users/api-key')
+    ElMessage.success('API Key删除成功')
+    showApiKeyDialog.value = false
+    // 重新加载API Key状态
+    await loadApiKey()
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.msg || '删除API Key失败')
+  } finally {
+    apiKeyLoading.value = false
   }
 }
 </script>
@@ -1615,6 +1768,13 @@ const handlePasswordConfirm = async () => {
 }
 
 .notification-bell {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  margin-right: 20px;
+}
+
+.api-management-btn {
   display: flex;
   align-items: center;
   cursor: pointer;

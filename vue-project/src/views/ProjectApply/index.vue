@@ -113,7 +113,10 @@
       <!-- 计划书标签页 -->
       <el-tab-pane label="计划书" name="plan">
         <div class="plan-section">
-          <el-button type="primary" @click="handleUploadPlan">上传计划书(Word/PDF)</el-button>
+          <div class="plan-upload-area">
+            <el-button type="primary" @click="handleUploadPlan">上传计划书(Word)</el-button>
+            <div class="plan-upload-tip">仅支持 .docx 和 .doc 格式，请将文档另存为 Word 文档后上传</div>
+          </div>
           <!-- <el-button @click="handleDownloadTemplate">下载计划书(Word)模板</el-button> -->
           <div v-if="formData.plans && formData.plans.length > 0" class="plan-files-list">
             <div v-for="(plan, index) in formData.plans" :key="plan.id || index" class="file-display">
@@ -124,6 +127,7 @@
               <div class="file-info">
                 <div class="file-name">{{ plan.fileName }}</div>
                 <div class="file-actions">
+                  <el-button type="primary" link @click="handlePreviewPlan(plan)">预览</el-button>
                   <el-button type="primary" link @click="handleDownloadPlan(plan)">下载</el-button>
                   <el-button type="danger" link @click="handleDeletePlan(plan, index)">删除</el-button>
                 </div>
@@ -287,11 +291,18 @@
       </template>
     </el-dialog>
 
+    <WordPreviewDialog
+      v-model="previewVisible"
+      :file-name="previewFileName"
+      :plan-id="previewPlanId"
+      :project-id="previewProjectId"
+    />
+
     <!-- 文件上传组件（隐藏，支持多选） -->
     <input
       ref="fileInputRef"
       type="file"
-      accept=".doc,.docx,.pdf"
+      accept=".docx,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
       multiple
       style="display: none"
       @change="handleFileChange"
@@ -304,6 +315,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Document, ArrowLeft } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
+import WordPreviewDialog from '@/components/WordPreviewDialog.vue'
 import {
   getProjectById,
   addProject,
@@ -538,6 +550,10 @@ const handleReset = () => {
 
 // 上传计划书
 const handleUploadPlan = () => {
+  // 重置文件输入框
+  if (fileInputRef.value) {
+    fileInputRef.value.value = ''
+  }
   fileInputRef.value?.click()
 }
 
@@ -553,14 +569,17 @@ const handleFileChange = async (event: Event) => {
   
   fileArray.forEach(file => {
     const fileName = file.name.toLowerCase()
-    if (!fileName.endsWith('.doc') && !fileName.endsWith('.docx') && !fileName.endsWith('.pdf')) {
+    if (!fileName.endsWith('.docx') && !fileName.endsWith('.doc')) {
       invalidFiles.push(file.name)
     }
   })
 
   if (invalidFiles.length > 0) {
-    ElMessage.error(`以下文件格式不支持：${invalidFiles.join(', ')}。只支持上传Word文档（.doc或.docx格式）或PDF文件（.pdf格式）`)
-    target.value = ''
+    ElMessage.error(`以下文件格式不支持：${invalidFiles.join(', ')}。仅支持上传 Word 文档（.docx 或 .doc 格式）`)
+    // 清空文件选择
+    if (target) {
+      target.value = ''
+    }
     return
   }
 
@@ -608,6 +627,22 @@ const isPdfFile = (fileName: string) => {
   return fileName?.toLowerCase().endsWith('.pdf')
 }
 
+const previewVisible = ref(false)
+const previewFileName = ref('')
+const previewPlanId = ref<number | null>(null)
+const previewProjectId = ref<number | null>(null)
+
+const handlePreviewPlan = (plan: ProjectPlan) => {
+  previewFileName.value = plan.fileName || '计划书'
+  previewPlanId.value = plan.id ?? null
+  previewProjectId.value = plan.id ? null : projectId.value
+  if (!previewPlanId.value && !previewProjectId.value) {
+    ElMessage.warning('请先保存项目后再预览')
+    return
+  }
+  previewVisible.value = true
+}
+
 // 下载计划书
 const handleDownloadPlan = (plan: ProjectPlan) => {
   if (!plan.filePath) return
@@ -640,9 +675,17 @@ const handleDeletePlan = async (plan: ProjectPlan, index: number) => {
     })
     
     await deletePlan(plan.id)
-    if (formData.value.plans) {
-      formData.value.plans.splice(index, 1)
+    
+    // 重新加载项目数据以确保前后端同步
+    if (projectId.value) {
+      await loadProject()
+    } else {
+      // 如果没有项目ID，直接从列表中删除
+      if (formData.value.plans) {
+        formData.value.plans.splice(index, 1)
+      }
     }
+    
     ElMessage.success('删除成功')
   } catch (error: any) {
     if (error !== 'cancel') {
@@ -895,6 +938,25 @@ onMounted(() => {
   margin: 0 10px;
 }
 
+.plan-upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.plan-upload-area .el-button {
+  margin: 0;
+}
+
+.plan-upload-tip {
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  text-align: center;
+}
+
 .plan-files-list {
   margin-top: 30px;
   display: flex;
@@ -983,4 +1045,5 @@ onMounted(() => {
   white-space: normal;
   word-break: break-all;
 }
+
 </style>

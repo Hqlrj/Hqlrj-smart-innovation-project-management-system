@@ -27,6 +27,7 @@ public class User {
     private String college; // 学院
     private String avatar; // 头像路径
     private String status; // 当前状态
+    private String apiKey; // DeepSeek API Key
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss") // 格式化日期时间
     private LocalDateTime createTime; // 创建时间
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

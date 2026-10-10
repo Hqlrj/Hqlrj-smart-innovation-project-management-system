@@ -30,22 +30,21 @@
 
     <!-- 项目列表表格 -->
     <el-card class="table-card" shadow="never">
-      <div class="table-wrapper">
-        <el-table
-          v-loading="loading"
-          :data="projectList"
-          border
-          style="width: 100%"
-          :empty-text="'暂无数据'"
-        >
-        <el-table-column prop="projectName" label="项目名称" width="200" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="submitTime" label="提交时间" width="190" align="center" header-align="center">
+      <el-table
+        v-loading="loading"
+        :data="projectList"
+        border
+        style="width: 100%"
+        :empty-text="'暂无数据'"
+      >
+        <el-table-column prop="projectName" label="项目名称" min-width="180" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="submitTime" label="提交时间" min-width="170" align="center" header-align="center">
           <template #default="{ row }">
             {{ formatDate(row.submitTime) }}
           </template>
         </el-table-column>
-        <el-table-column prop="applicantName" label="提交人" width="130" align="center" header-align="center" />
-        <el-table-column prop="status" label="状态" width="130" align="center" header-align="center">
+        <el-table-column prop="applicantName" label="提交人" min-width="100" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="status" label="状态" min-width="100" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag
               :type="getStatusType(row.status)"
@@ -55,14 +54,13 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="auditorName" label="审批人" width="130" align="center" header-align="center">
+        <el-table-column prop="auditorName" label="审批人" min-width="100" align="center" header-align="center" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.auditorName || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="projectIntro" label="成果概述" width="286" align="center" header-align="center" show-overflow-tooltip />
-       
-        <el-table-column label="操作" width="320" fixed="right" align="center" header-align="center">
+        <el-table-column prop="projectIntro" label="成果概述" min-width="220" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column label="操作" min-width="280" align="center" header-align="center">
           <template #default="{ row }">
             <!-- 项目负责人：未审批显示修改、详情、删除，已审批显示详情、删除 -->
             <template v-if="isProjectLeader">
@@ -79,7 +77,8 @@
             <!-- 评委老师或审核人：已审核显示详情，未审核显示审批和详情 -->
             <template v-else-if="isJudgeOrAuditor">
               <template v-if="row.status === 'submitted'">
-                <!-- 未审核：显示审批、详情 -->
+                <!-- 未审核：显示AI审核、审批、详情 -->
+                <el-button type="primary" size="small" @click="handleAiReview(row)">AI审核</el-button>
                 <el-button type="success" size="small" @click="handleApprove(row)">审批</el-button>
                 <el-button size="small" @click="handleDetail(row)">详情</el-button>
               </template>
@@ -106,7 +105,6 @@
           </template>
         </el-table-column>
       </el-table>
-      </div>
     </el-card>
 
     <!-- 分页控件 -->
@@ -151,6 +149,97 @@
         </span>
       </template>
     </el-dialog>
+
+    <!-- AI审核进度弹窗 -->
+    <el-dialog
+      v-model="aiReviewProgressVisible"
+      title="AI审核进度"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <div class="ai-review-progress">
+        <el-steps :active="aiReviewProgress.currentStep" align-center>
+          <el-step title="文档解析" />
+          <el-step title="章节切分" />
+          <el-step title="AI评审" />
+          <el-step title="结果合并" />
+        </el-steps>
+        <div class="progress-status">
+          <el-progress 
+            :percentage="aiReviewProgress.percentage" 
+            :status="aiReviewProgress.status"
+          />
+          <p class="status-text">{{ aiReviewProgress.statusText }}</p>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="aiReviewProgressVisible = false" :disabled="aiReviewProgress.isRunning">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- AI审核结果弹窗 -->
+    <el-dialog
+      v-model="aiReviewResultVisible"
+      title="AI审核结果"
+      width="800px"
+    >
+      <div class="ai-review-result">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="项目名称">{{ aiReviewResult.projectName }}</el-descriptions-item>
+          <el-descriptions-item label="综合得分">
+            <el-tag :type="getScoreType(aiReviewResult.totalScore)" size="large">
+              {{ aiReviewResult.totalScore }}分
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="评审等级">
+            <el-tag :type="getGradeType(aiReviewResult.grade)" size="large">
+              {{ aiReviewResult.grade }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="审核时间">{{ aiReviewResult.reviewTime }}</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="result-section">
+          <h4>章节评审详情</h4>
+          <el-table :data="aiReviewResult.sections" border style="width: 100%; margin-top: 10px">
+            <el-table-column prop="sectionTitle" label="章节名称" width="200" />
+            <el-table-column prop="score" label="得分" width="80" align="center">
+              <template #default="{ row }">
+                {{ row.score }}分
+              </template>
+            </el-table-column>
+            <el-table-column prop="strengths" label="优点" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div v-html="formatAiContent(row.strengths)"></div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="weaknesses" label="不足" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div v-html="formatAiContent(row.weaknesses)"></div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="suggestions" label="建议" show-overflow-tooltip>
+              <template #default="{ row }">
+                <div v-html="formatAiContent(row.suggestions)"></div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+
+        <div class="result-section">
+          <h4>总体评价</h4>
+          <div class="summary-text" v-html="formatAiContent(aiReviewResult.summary)"></div>
+        </div>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="aiReviewResultVisible = false">关闭</el-button>
+          <el-button type="primary" @click="handleApproveAfterAiReview">审批通过</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -160,6 +249,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Refresh } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useLoginStore } from '@/stores/login'
+import request from '@/utils/request'
 import {
   getProjectList,
   deleteProject,
@@ -190,7 +280,6 @@ const pagination = reactive({
   total: 0
 })
 
-
 // 审批弹窗
 const approveDialogVisible = ref(false)
 const approveForm = reactive({
@@ -198,6 +287,28 @@ const approveForm = reactive({
   projectName: '',
   action: 'approve' as 'approve' | 'reject',
   rejectReason: ''
+})
+
+// AI审核进度弹窗
+const aiReviewProgressVisible = ref(false)
+const aiReviewProgress = reactive({
+  currentStep: 0,
+  percentage: 0,
+  status: 'success' as any,
+  statusText: '',
+  isRunning: false,
+  currentProjectId: 0
+})
+
+// AI审核结果弹窗
+const aiReviewResultVisible = ref(false)
+const aiReviewResult = reactive({
+  projectName: '',
+  totalScore: 0,
+  grade: '',
+  reviewTime: '',
+  summary: '',
+  sections: [] as any[]
 })
 
 // 判断是否是项目负责人
@@ -371,6 +482,207 @@ const handleApproveConfirm = async () => {
   }
 }
 
+// AI审核
+const handleAiReview = async (project: Project) => {
+  // 检查用户是否配置了API Key
+  try {
+    const response = await request.get('/users/api-key')
+    const hasApiKey = response.hasKey === 'true' || response.hasKey === true
+    
+    if (!hasApiKey) {
+      ElMessage.warning('请先在个人设置中配置API Key')
+      return
+    }
+    
+    // 已配置API Key，直接开始AI审核
+    startAiReviewProcess(project.id!, project.projectName)
+  } catch (error) {
+    console.error('检查API Key失败:', error)
+    ElMessage.error('检查API Key配置失败')
+  }
+}
+
+// 开始AI审核流程
+const startAiReviewProcess = async (projectId: number, projectName: string) => {
+  try {
+    aiReviewProgressVisible.value = true
+    
+    // 初始化进度
+    aiReviewProgress.currentStep = 0
+    aiReviewProgress.percentage = 0
+    aiReviewProgress.statusText = '开始AI审核...'
+    aiReviewProgress.isRunning = true
+    aiReviewProgress.currentProjectId = projectId
+
+    // 调用后端API启动AI审核（不传apiKey，使用用户配置的）
+    const response = await request.post(`/projects/${projectId}/start-review`, {
+      mode: 'AI'
+    })
+
+    const taskId = response?.taskId
+    if (taskId) {
+      // 开始轮询任务状态
+      pollAiReviewStatus(taskId)
+    } else {
+      // 后端返回了错误消息，这里不应该执行到，因为响应拦截器已经处理了错误
+      aiReviewProgressVisible.value = false
+      aiReviewProgress.isRunning = false
+    }
+  } catch (error: any) {
+    // 响应拦截器已经处理了错误消息显示，这里只需要关闭进度弹窗
+    aiReviewProgressVisible.value = false
+    aiReviewProgress.isRunning = false
+  }
+}
+
+// 轮询AI审核状态
+const pollAiReviewStatus = async (taskId: number) => {
+  const pollInterval = setInterval(async () => {
+    try {
+      const task = await request.get(`/projects/ai-review/${taskId}`)
+      console.log('AI审核任务状态:', task)
+
+      if (!task) {
+        clearInterval(pollInterval)
+        throw new Error('任务不存在')
+      }
+
+      // 更新进度
+      updateProgressByStatus(task.status)
+
+      if (task.status === 'DONE') {
+        clearInterval(pollInterval)
+        aiReviewProgress.isRunning = false
+        aiReviewProgress.percentage = 100
+        aiReviewProgress.statusText = '审核完成'
+        
+        // 停顿1秒后显示审核结果
+        setTimeout(() => {
+          showAiReviewResult(task, taskId)
+        }, 1000)
+      } else if (task.status === 'FAILED') {
+        clearInterval(pollInterval)
+        aiReviewProgress.isRunning = false
+        aiReviewProgress.status = 'exception'
+        aiReviewProgress.statusText = 'AI审核失败: ' + (task.errorMsg || task.errorMessage || '未知错误')
+        ElMessage.error('AI审核失败: ' + (task.errorMsg || task.errorMessage || '未知错误'))
+      }
+    } catch (error: any) {
+      console.error('轮询AI审核状态失败:', error)
+      clearInterval(pollInterval)
+      aiReviewProgress.isRunning = false
+      aiReviewProgress.status = 'exception'
+      aiReviewProgress.statusText = '查询审核状态失败'
+      ElMessage.error(error.message || '查询审核状态失败')
+    }
+  }, 2000) // 每2秒轮询一次
+}
+
+// 根据状态更新进度
+const updateProgressByStatus = (status: string) => {
+  // 步骤0: 文档解析, 步骤1: 章节切分, 步骤2: AI评审, 步骤3: 结果合并
+  const statusMap: Record<string, { step: number; percentage: number; text: string }> = {
+    'PENDING': { step: 0, percentage: 5, text: '等待处理' },
+    'PARSING': { step: 0, percentage: 15, text: '正在解析文档' },
+    'CLEANING': { step: 0, percentage: 25, text: '正在清洗数据' },
+    'SPLITTING': { step: 1, percentage: 40, text: '正在切分章节' },
+    'REVIEWING': { step: 2, percentage: 60, text: '正在进行AI评审' },
+    'SUMMARIZING': { step: 3, percentage: 85, text: '正在合并结果' },
+    'DONE': { step: 4, percentage: 100, text: '审核完成' }
+  }
+
+  const progress = statusMap[status] || { step: 0, percentage: 0, text: '处理中' }
+  aiReviewProgress.currentStep = progress.step
+  aiReviewProgress.percentage = progress.percentage
+  aiReviewProgress.statusText = progress.text
+}
+
+// 显示AI审核结果
+const showAiReviewResult = async (task: any, taskId: number) => {
+  aiReviewResult.projectName = task.projectName || ''
+  aiReviewResult.totalScore = task.totalScore || 0
+  aiReviewResult.grade = task.grade || ''
+  aiReviewResult.reviewTime = task.endTime ? formatDate(task.endTime) : ''
+  aiReviewResult.summary = task.summary || '暂无总体评价'
+  
+  // 获取章节详情
+  try {
+    const sections = await request.get(`/projects/ai-review/${taskId}/sections`)
+    aiReviewResult.sections = sections || []
+  } catch (error) {
+    console.error('获取章节详情失败:', error)
+    aiReviewResult.sections = []
+  }
+  
+  aiReviewProgressVisible.value = false
+  aiReviewResultVisible.value = true
+}
+
+// AI审核后审批通过
+const handleApproveAfterAiReview = async () => {
+  try {
+    await approveProject(aiReviewProgress.currentProjectId)
+    ElMessage.success('审批通过')
+    aiReviewResultVisible.value = false
+    fetchProjectList()
+  } catch (error: any) {
+    ElMessage.error(error.message || '审批失败')
+  }
+}
+
+// 获取分数对应的标签类型
+const getScoreType = (score: number) => {
+  if (score >= 80) return 'success'
+  if (score >= 60) return 'warning'
+  return 'danger'
+}
+
+// 获取等级对应的标签类型
+const getGradeType = (grade: string) => {
+  switch (grade) {
+    case 'A':
+      return 'success'
+    case 'B':
+      return 'warning'
+    case 'C':
+      return 'info'
+    case 'D':
+      return 'danger'
+    default:
+      return ''
+  }
+}
+
+// 格式化AI返回的内容，去掉英文和括号，分条显示
+const formatAiContent = (content: string) => {
+  if (!content) return ''
+  
+  // 去掉JSON格式和括号
+  let formatted = content
+    .replace(/\[|\]|{|}/g, '') // 去掉方括号和花括号
+    .replace(/"/g, '') // 去掉引号
+    .replace(/,/g, '，') // 英文逗号替换为中文逗号
+    .replace(/\./g, '。') // 英文句号替换为中文句号
+    .replace(/:/g, '：') // 英文冒号替换为中文冒号
+    .replace(/;/g, '；') // 英文分号替换为中文分号
+  
+  // 去掉常见英文单词（保留中文和数字）
+  formatted = formatted.replace(/\b(strengths|weaknesses|risks|suggestions|point|evidence|target|from_section|severity|priority|target_section)\b/gi, '')
+  
+  // 将换行符转换为HTML换行
+  formatted = formatted.replace(/\n/g, '<br>')
+  
+  // 如果内容中有序号，确保它们是中文格式
+  formatted = formatted.replace(/(\d+)\./g, (match, p1) => {
+    return `${p1}、`
+  })
+  
+  // 去掉多余的空格
+  formatted = formatted.replace(/\s+/g, ' ')
+  
+  return formatted.trim()
+}
+
 // 查看详情（跳转到详情页面）
 const handleDetail = (project: Project) => {
   router.push(`/project-detail/${project.id}`)
@@ -426,20 +738,12 @@ onMounted(() => {
 .table-card {
   margin-bottom: 20px;
   background: white;
+  overflow: hidden;
 }
 
 .table-card :deep(.el-card__body) {
   padding: 0;
-}
-
-.table-wrapper {
-  width: 100%;
   overflow-x: auto;
-}
-
-/* 确保表格有足够的最小宽度，避免列被挤压 */
-.table-wrapper :deep(.el-table) {
-  min-width: 1200px;
 }
 
 .pagination-container {
@@ -449,8 +753,8 @@ onMounted(() => {
   background: white;
 }
 
-/* 确保表格颜色为白色 */
 :deep(.el-table) {
+  width: 100% !important;
   background: white;
 }
 
@@ -468,10 +772,116 @@ onMounted(() => {
   background: white;
 }
 
-/* 表格单元格换行，长文本自动折行 */
-:deep(.el-table .cell) {
-  white-space: normal;
-  word-break: break-all;
+/* AI审核相关样式 */
+.ai-review-progress {
+  padding: 20px 0;
 }
 
+/* 统一对话框标题字体 */
+:deep(.el-dialog__title) {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+/* 自定义步骤条颜色 */
+.ai-review-progress :deep(.el-step__head.is-wait) {
+  color: #909399;
+  border-color: #e4e7ed;
+}
+
+.ai-review-progress :deep(.el-step__head.is-wait .el-step__icon) {
+  background: #e4e7ed;
+  border-color: #dcdfe6;
+  color: #909399;
+}
+
+.ai-review-progress :deep(.el-step__head.is-wait .el-step__line) {
+  background: #e4e7ed;
+}
+
+/* 进行中的步骤 - 灰色 */
+.ai-review-progress :deep(.el-step__head.is-process) {
+  color: #909399;
+  border-color: #e4e7ed;
+}
+
+.ai-review-progress :deep(.el-step__head.is-process .el-step__icon) {
+  background: #e4e7ed;
+  border-color: #dcdfe6;
+  color: #909399;
+}
+
+.ai-review-progress :deep(.el-step__head.is-process .el-step__line) {
+  background: #e4e7ed;
+}
+
+/* 已完成的步骤 - 绿色 */
+.ai-review-progress :deep(.el-step__head.is-finish) {
+  color: #67c23a;
+  border-color: #67c23a;
+}
+
+.ai-review-progress :deep(.el-step__head.is-finish .el-step__icon) {
+  background: #67c23a;
+  border-color: #67c23a;
+  color: white;
+}
+
+.ai-review-progress :deep(.el-step__head.is-finish .el-step__line) {
+  background: #67c23a;
+}
+
+/* 步骤标题颜色和字体样式统一 */
+.ai-review-progress :deep(.el-step__title) {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ai-review-progress :deep(.el-step__title.is-wait) {
+  color: #909399;
+}
+
+.ai-review-progress :deep(.el-step__title.is-process) {
+  color: #909399;
+}
+
+.ai-review-progress :deep(.el-step__title.is-finish) {
+  color: #67c23a;
+}
+
+.progress-status {
+  margin-top: 30px;
+  padding: 0 20px;
+}
+
+.status-text {
+  text-align: center;
+  margin-top: 15px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.ai-review-result {
+  padding: 10px 0;
+}
+
+.result-section {
+  margin-top: 20px;
+}
+
+.result-section h4 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.summary-text {
+  padding: 15px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  line-height: 1.8;
+  color: #606266;
+}
 </style>

@@ -62,41 +62,33 @@
 
     <!-- 项目列表表格 -->
     <el-card class="table-card" shadow="never">
-      <div class="table-wrapper">
-        <el-table
-          v-loading="loading"
-          :data="projectList"
-          border
-          style="width: 100%"
-          :empty-text="'暂无数据'"
-        >
-        <!-- 用 min-width 让表格自适应撑满（避免无操作列时右侧留白） -->
-        <el-table-column prop="projectName" label="项目名称" min-width="260" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="projectType" label="项目类型" width="180" align="center" header-align="center">
+      <el-table
+        v-loading="loading"
+        :data="projectList"
+        border
+        style="width: 100%"
+        :empty-text="'暂无数据'"
+      >
+        <el-table-column prop="projectName" label="项目名称" min-width="200" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="projectType" label="项目类型" min-width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag :type="getProjectTypeTagType(row.projectType)" size="small">
               {{ row.projectType || '-' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="applicantCollege" label="项目所属学院" width="210" align="center" header-align="center" show-overflow-tooltip>
+        <el-table-column prop="applicantCollege" label="项目所属学院" min-width="160" align="center" header-align="center" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.applicantCollege || '-' }}
           </template>
         </el-table-column>
-        <el-table-column prop="applicantName" label="申报人" width="160" align="center" header-align="center" />
-        <el-table-column prop="submitTime" label="项目填报时间" width="206" align="center" header-align="center">
+        <el-table-column prop="applicantName" label="申报人" min-width="100" align="center" header-align="center" show-overflow-tooltip />
+        <el-table-column prop="submitTime" label="项目填报时间" min-width="170" align="center" header-align="center">
           <template #default="{ row }">
             {{ formatDate(row.submitTime) }}
           </template>
         </el-table-column>
-        <!-- 项目空间列已注释 -->
-        <!-- <el-table-column prop="projectSpace" label="项目空间" width="120" align="center" header-align="center">
-          <template #default="{ row }">
-            {{ row.projectSpace || '-' }}
-          </template>
-        </el-table-column> -->
-        <el-table-column prop="status" label="项目状态" width="180" align="center" header-align="center">
+        <el-table-column prop="status" label="项目状态" min-width="120" align="center" header-align="center">
           <template #default="{ row }">
             <el-tag
               :type="getStatusType(row.status)"
@@ -107,14 +99,13 @@
           </template>
         </el-table-column>
         <!-- 项目负责人不显示操作列 -->
-        <el-table-column v-if="!isProjectLeader" label="操作" width="240" fixed="right" align="center" header-align="center">
+        <el-table-column v-if="!isProjectLeader" label="操作" min-width="180" align="center" header-align="center">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="handleDetail(row)">详情</el-button>
             <el-button type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
-      </div>
     </el-card>
 
     <!-- 分页控件 -->
@@ -351,27 +342,12 @@ onMounted(() => {
 .table-card {
   margin-bottom: 20px;
   background: white;
+  overflow: hidden;
 }
 
 .table-card :deep(.el-card__body) {
   padding: 0;
-}
-
-.table-wrapper {
-  width: 100%;
   overflow-x: auto;
-}
-
-/* 表格默认撑满容器，窄屏时仍可横向滚动 */
-.table-wrapper :deep(.el-table) {
-  width: 100% !important;
-  min-width: 1220px;
-}
-
-/* 确保表格列不会被压缩 */
-.table-wrapper :deep(.el-table__header-wrapper),
-.table-wrapper :deep(.el-table__body-wrapper) {
-  width: auto !important;
 }
 
 .pagination-container {
@@ -381,8 +357,8 @@ onMounted(() => {
   background: white;
 }
 
-/* 确保表格颜色为白色 */
 :deep(.el-table) {
+  width: 100% !important;
   background: white;
 }
 
@@ -398,11 +374,5 @@ onMounted(() => {
 
 :deep(.el-table__body tr:hover > td) {
   background: white;
-}
-
-/* 表格单元格换行，长文本自动折行 */
-:deep(.el-table .cell) {
-  white-space: normal;
-  word-break: break-all;
 }
 </style>

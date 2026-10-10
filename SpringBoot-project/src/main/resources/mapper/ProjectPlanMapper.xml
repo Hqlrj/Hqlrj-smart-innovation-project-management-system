@@ -11,13 +11,14 @@
         <result property="filePath" column="file_path"/>
         <result property="fileName" column="file_name"/>
         <result property="fileSize" column="file_size"/>
+        <result property="fileHash" column="file_hash"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
     </resultMap>
 
     <!-- 根据项目ID查询计划书列表 -->
     <select id="listByProjectId" resultMap="projectPlanResultMap">
-        SELECT id, project_id, file_path, file_name, file_size, create_time, update_time
+        SELECT id, project_id, file_path, file_name, file_size, file_hash, create_time, update_time
         FROM project_plan
         WHERE project_id = #{projectId}
         ORDER BY create_time ASC
@@ -25,23 +26,23 @@
 
     <!-- 根据ID查询计划书 -->
     <select id="getById" resultMap="projectPlanResultMap">
-        SELECT id, project_id, file_path, file_name, file_size, create_time, update_time
+        SELECT id, project_id, file_path, file_name, file_size, file_hash, create_time, update_time
         FROM project_plan
         WHERE id = #{id}
     </select>
 
     <!-- 新增计划书 -->
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO project_plan (project_id, file_path, file_name, file_size, create_time)
-        VALUES (#{projectId}, #{filePath}, #{fileName}, #{fileSize}, #{createTime})
+        INSERT INTO project_plan (project_id, file_path, file_name, file_size, file_hash, create_time)
+        VALUES (#{projectId}, #{filePath}, #{fileName}, #{fileSize}, #{fileHash}, #{createTime})
     </insert>
 
     <!-- 批量新增计划书 -->
     <insert id="batchInsert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO project_plan (project_id, file_path, file_name, file_size, create_time)
+        INSERT INTO project_plan (project_id, file_path, file_name, file_size, file_hash, create_time)
         VALUES
         <foreach collection="plans" item="plan" separator=",">
-            (#{plan.projectId}, #{plan.filePath}, #{plan.fileName}, #{plan.fileSize}, #{plan.createTime})
+            (#{plan.projectId}, #{plan.filePath}, #{plan.fileName}, #{plan.fileSize}, #{plan.fileHash}, #{plan.createTime})
         </foreach>
     </insert>
 
