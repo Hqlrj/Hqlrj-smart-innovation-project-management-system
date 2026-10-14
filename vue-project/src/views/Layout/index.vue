@@ -480,12 +480,17 @@
     <el-dialog v-if="canAccessAiChat" v-model="showApiKeyDialog" title="API Key管理" width="500px" @close="resetApiKeyForm">
       <div class="dialog-body">
         <el-alert
-          title="提示"
-          type="info"
+          :title="hasApiKey ? '已配置成功' : '提示'"
+          :type="hasApiKey ? 'success' : 'info'"
           :closable="false"
           style="margin-bottom: 20px"
         >
-          请输入您的DeepSeek API Key以使用AI聊天功能。API Key仅保存在您的账户中，其他用户无法访问。
+          <template v-if="hasApiKey">
+            API Key 已配置，不能直接覆盖。如需更换，请先删除后再重新配置。
+          </template>
+          <template v-else>
+            请输入您的DeepSeek API Key以使用AI聊天功能。API Key仅保存在您的账户中，其他用户无法访问。
+          </template>
         </el-alert>
         
         <el-form label-width="100px">
@@ -499,7 +504,7 @@
             <el-input v-model="maskedApiKey" disabled />
           </el-form-item>
           
-          <el-form-item label="API Key">
+          <el-form-item v-else label="API Key">
             <el-input 
               v-model="apiKeyForm.apiKey" 
               type="password" 
@@ -513,7 +518,7 @@
         <span class="dialog-footer">
           <el-button @click="() => { showApiKeyDialog = false; resetApiKeyForm() }">取消</el-button>
           <el-button v-if="hasApiKey" type="danger" @click="handleDeleteApiKey" :loading="apiKeyLoading">删除</el-button>
-          <el-button type="primary" :loading="apiKeyLoading" @click="handleApiKeyConfirm">保存</el-button>
+          <el-button v-else type="primary" :loading="apiKeyLoading" @click="handleApiKeyConfirm">保存</el-button>
         </span>
       </template>
     </el-dialog>
@@ -609,10 +614,10 @@ const expandSectionByRoute = () => {
   }
   
   // 项目管理相关路由
-  if (path.includes('project-query') || 
-      path.includes('project-apply') || 
-      path.includes('progress-management') || 
-      // path.includes('project-revoke') || // 项目撤销已注释
+  if (path.includes('project-query') ||
+      path.includes('project-apply') ||
+      path.includes('project-detail') ||
+      path.includes('progress-management') ||
       path.includes('project-overview') ||
       path.includes('project-awards')) {
     sections.project.expanded = true
@@ -1045,6 +1050,10 @@ const resetApiKeyForm = () => {
 }
 
 const handleApiKeyConfirm = async () => {
+  if (hasApiKey.value) {
+    ElMessage.warning('已配置成功，请先删除后再重新配置')
+    return
+  }
   if (!apiKeyForm.value.apiKey.trim()) {
     ElMessage.error('API Key不能为空')
     return
@@ -1082,12 +1091,15 @@ const handleDeleteApiKey = async () => {
     
     apiKeyLoading.value = true
     await request.delete('/users/api-key')
-    ElMessage.success('API Key删除成功')
-    showApiKeyDialog.value = false
-    // 重新加载API Key状态
-    await loadApiKey()
+    ElMessage.success('API Key已删除，请重新配置')
+    hasApiKey.value = false
+    maskedApiKey.value = ''
+    resetApiKeyForm()
   } catch (error: any) {
-    ElMessage.error(error?.response?.data?.msg || '删除API Key失败')
+    if (error === 'cancel' || error === 'close') {
+      return
+    }
+    ElMessage.error(error?.response?.data?.msg || error?.message || '删除API Key失败')
   } finally {
     apiKeyLoading.value = false
   }

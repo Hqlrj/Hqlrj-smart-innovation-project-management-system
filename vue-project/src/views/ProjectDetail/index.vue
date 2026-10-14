@@ -12,8 +12,19 @@
       </el-button>
     </div>
 
+    <div v-if="loading" class="detail-state">
+      <el-skeleton :rows="8" animated />
+    </div>
+    <el-result v-else-if="loadError" icon="warning" title="无法加载项目详情" :sub-title="loadError">
+      <template #extra>
+        <el-button type="primary" @click="fetchProjectDetail">重新加载</el-button>
+        <el-button @click="handleBack">返回</el-button>
+      </template>
+    </el-result>
+    <el-empty v-else-if="!project" description="未找到项目信息" />
+
     <!-- 标签页 -->
-    <el-tabs v-model="activeTab" class="detail-tabs">
+    <el-tabs v-else v-model="activeTab" class="detail-tabs">
       <!-- 基本信息标签页 -->
       <el-tab-pane label="基本信息" name="basic">
         <div v-if="project" class="basic-info">
@@ -295,11 +306,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, defineAsyncComponent } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Document, Trophy, InfoFilled, View } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
-import WordPreviewDialog from '@/components/WordPreviewDialog.vue'
 import {
   getProjectById,
   type Project,
@@ -307,14 +317,17 @@ import {
   type ProjectPlan
 } from '@/api/project'
 
+const WordPreviewDialog = defineAsyncComponent(() => import('@/components/WordPreviewDialog.vue'))
+
 const route = useRoute()
 const router = useRouter()
 
 // 当前激活的标签页
 const activeTab = ref('basic')
 
-// 项目数据
 const project = ref<Project | null>(null)
+const loading = ref(false)
+const loadError = ref('')
 
 // 已审批的获奖记录（计算属性）
 const approvedAwards = computed(() => {
@@ -325,41 +338,31 @@ const approvedAwards = computed(() => {
   return project.value.awards.filter(award => award.status === 'approved')
 })
 
-// 获取项目详情
 const fetchProjectDetail = async () => {
-  const id = route.params.id as string
-  console.log('项目ID:', id)
-  
-  if (!id || isNaN(Number(id))) {
-    ElMessage.error('项目ID不存在或格式错误')
-    router.back()
+  const id = Array.isArray(route.params.id) ? route.params.id[0] : route.params.id
+  if (!id || Number.isNaN(Number(id))) {
+    loadError.value = '项目ID不存在或格式错误'
+    project.value = null
     return
   }
 
   const projectId = Number(id)
-
+  loading.value = true
+  loadError.value = ''
   try {
-    // request 拦截器已经处理了 Result 格式，直接返回 data 部分
     const response = await getProjectById(projectId) as unknown as Project
-    console.log('项目详情响应:', response)
-    
-    // response 已经是 Project 对象（经过拦截器处理）
-    // 如果项目不存在，后端会返回错误，拦截器会显示错误消息并 reject
-    if (response && response.id) {
+    if (response && (response.id || response.projectName)) {
       project.value = response
     } else {
-      ElMessage.error('项目不存在')
-      router.back()
+      project.value = null
+      loadError.value = '项目不存在'
     }
   } catch (error: any) {
-    // 如果后端返回错误（如项目不存在），拦截器已经显示了错误消息
-    // 这里只需要跳转回去，不显示重复的错误消息
     console.error('获取项目详情错误:', error)
-    // 如果拦截器没有显示错误消息，这里才显示
-    if (!error.response || error.response.status !== 401) {
-      // 拦截器已经处理了错误消息，这里不需要重复显示
-    }
-    router.back()
+    project.value = null
+    loadError.value = error?.message || '加载项目详情失败'
+  } finally {
+    loading.value = false
   }
 }
 
@@ -522,10 +525,16 @@ const getAwardCertificateUrl = (path: string) => {
   return `/api/${path}`
 }
 
-// 组件挂载时获取数据
 onMounted(() => {
   fetchProjectDetail()
 })
+
+watch(
+  () => route.params.id,
+  () => {
+    fetchProjectDetail()
+  }
+)
 </script>
 
 <style scoped>
@@ -533,6 +542,12 @@ onMounted(() => {
   padding: 24px;
   background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: calc(100vh - 60px);
+}
+
+.detail-state {
+  padding: 24px;
+  background: #fff;
+  border-radius: 12px;
 }
 
 .header-bar {

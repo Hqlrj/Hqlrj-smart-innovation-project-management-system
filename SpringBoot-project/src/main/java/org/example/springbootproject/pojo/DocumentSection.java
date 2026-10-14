@@ -14,4 +14,10 @@ public class DocumentSection {
     private String content;
     private Double score;
     private Double weight;
+    /** BACKGROUND / INNOVATION / FEASIBILITY 等 */
+    private String sectionKind;
+    private String strengths;
+    private String weaknesses;
+    private String risks;
+    private String suggestions;
 }

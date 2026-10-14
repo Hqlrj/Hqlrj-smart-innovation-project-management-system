@@ -66,7 +66,7 @@ request.interceptors.response.use(
     // 如果没有 code 字段，直接返回数据
     return res
   },
-  (error) => {
+  async (error) => {
     // HTTP 错误处理
     if (error.response) {
       const { status, data } = error.response
@@ -90,7 +90,18 @@ request.interceptors.response.use(
       } else if (status === 404) {
         ElMessage.error('请求的资源不存在')
       } else if (status >= 500) {
-        ElMessage.error('服务器错误，请稍后重试')
+        if (error.config?.responseType === 'blob' && data instanceof Blob) {
+          try {
+            const json = JSON.parse(await data.text())
+            const msg = json.msg || '服务器错误，请稍后重试'
+            ElMessage.error(msg)
+            return Promise.reject(new Error(msg))
+          } catch {
+            ElMessage.error('服务器错误，请稍后重试')
+          }
+        } else {
+          ElMessage.error(data?.msg || '服务器错误，请稍后重试')
+        }
       } else {
         // 显示后端返回的错误消息
         const errorMsg = data?.msg || error.message || '请求失败'

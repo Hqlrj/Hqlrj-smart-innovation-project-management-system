@@ -182,10 +182,17 @@ export const deletePlan = (id: number) => {
 }
 
 /**
- * 获取计划书原始文件（docx-preview 在线浏览）
+ * 获取计划书原始文件（下载用）
  */
 export const getPlanFileBlob = (id: number) => {
   return request.get(`/projects/plan/${id}/file`, { responseType: 'blob' })
+}
+
+/**
+ * 获取计划书 PDF 预览
+ */
+export const getPlanPreviewPdf = (id: number) => {
+  return request.get(`/projects/plan/${id}/preview-pdf`, { responseType: 'blob', timeout: 90000 })
 }
 
 /**
@@ -193,6 +200,13 @@ export const getPlanFileBlob = (id: number) => {
  */
 export const getProjectPlanFileBlob = (projectId: number) => {
   return request.get(`/projects/${projectId}/plan-file`, { responseType: 'blob' })
+}
+
+/**
+ * 获取项目计划书 PDF 预览（兼容无 planId 的旧数据）
+ */
+export const getProjectPlanPreviewPdf = (projectId: number) => {
+  return request.get(`/projects/${projectId}/plan-preview-pdf`, { responseType: 'blob', timeout: 90000 })
 }
 
 /**

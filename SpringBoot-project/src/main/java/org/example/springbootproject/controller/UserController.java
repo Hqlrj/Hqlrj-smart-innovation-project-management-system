@@ -222,6 +222,9 @@ public class UserController {
         if (user == null) {
             return Result.error("用户不存在");
         }
+        if (user.getApiKey() != null && !user.getApiKey().isBlank()) {
+            return Result.error("API Key已配置，请先删除后再重新配置");
+        }
         
         user.setApiKey(apiKey.trim());
         userService.update(user);

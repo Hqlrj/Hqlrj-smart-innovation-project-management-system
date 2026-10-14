@@ -96,6 +96,12 @@
             <artifactId>poi-scratchpad</artifactId>
             <version>5.2.3</version>
         </dependency>
+        <!-- Word 转 PDF（LibreOffice 不可用时的兜底） -->
+        <dependency>
+            <groupId>fr.opensagres.xdocreport</groupId>
+            <artifactId>fr.opensagres.poi.xwpf.converter.pdf</artifactId>
+            <version>2.0.4</version>
+        </dependency>
         
         <!-- OkHttp for HTTP requests -->
         <dependency>

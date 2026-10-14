@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.AiReviewReportMapper">
+
+    <resultMap id="aiReviewReportResultMap" type="org.example.springbootproject.pojo.AiReviewReport">
+        <id property="id" column="id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="totalScore" column="total_score"/>
+        <result property="grade" column="grade"/>
+        <result property="summary" column="summary"/>
+        <result property="highlights" column="highlights"/>
+        <result property="mainProblems" column="main_problems"/>
+        <result property="risks" column="risks"/>
+        <result property="suggestions" column="suggestions"/>
+        <result property="missingSections" column="missing_sections"/>
+        <result property="aiRecommendation" column="ai_recommendation"/>
+        <result property="consistencyNote" column="consistency_note"/>
+        <result property="rawJson" column="raw_json"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <select id="getByTaskId" resultMap="aiReviewReportResultMap">
+        SELECT id, task_id, total_score, grade, summary, highlights, main_problems, risks,
+               suggestions, missing_sections, ai_recommendation, consistency_note, raw_json, create_time
+        FROM ai_review_report
+        WHERE task_id = #{taskId}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_review_report (task_id, total_score, grade, summary, highlights, main_problems, risks,
+                                      suggestions, missing_sections, ai_recommendation, consistency_note, raw_json, create_time)
+        VALUES (#{taskId}, #{totalScore}, #{grade}, #{summary}, #{highlights}, #{mainProblems}, #{risks},
+                #{suggestions}, #{missingSections}, #{aiRecommendation}, #{consistencyNote}, #{rawJson}, #{createTime})
+    </insert>
+
+    <delete id="deleteByTaskId">
+        DELETE FROM ai_review_report WHERE task_id = #{taskId}
+    </delete>
+</mapper>

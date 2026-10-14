@@ -19,7 +19,9 @@ import org.example.springbootproject.service.AiChatService;
 import org.example.springbootproject.service.DocumentParseService;
 import org.example.springbootproject.constant.AiReviewConstants;
 import org.example.springbootproject.util.FileValidationUtil;
+import org.example.springbootproject.util.WordToPdfUtil;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -66,6 +68,9 @@ public class ProjectController {
 
     @Autowired
     private AiChatService aiChatService;
+
+    @Autowired
+    private WordToPdfUtil wordToPdfUtil;
 
     // 文件上传路径（相对于项目根目录）
     private static final String UPLOAD_DIR = "uploads/project-plans/";
@@ -432,7 +437,7 @@ public class ProjectController {
     }
 
     /**
-     * 获取计划书原始文件流（前端 docx-preview 在线浏览用）
+     * 获取计划书原始文件流（下载用）
      */
     @GetMapping("/plan/{id}/file")
     public ResponseEntity<Resource> getPlanFile(@PathVariable Integer id) {
@@ -441,6 +446,18 @@ public class ProjectController {
             return ResponseEntity.notFound().build();
         }
         return buildPlanFileResponse(plan.getFilePath(), plan.getFileName());
+    }
+
+    /**
+     * 在线预览：返回 Word 转换后的 PDF
+     */
+    @GetMapping("/plan/{id}/preview-pdf")
+    public ResponseEntity<Resource> previewPlanPdf(@PathVariable Integer id) {
+        ProjectPlan plan = projectPlanMapper.getById(id);
+        if (plan == null) {
+            return ResponseEntity.notFound().build();
+        }
+        return buildPlanPdfResponse(plan.getFilePath(), plan.getFileName());
     }
 
     /**
@@ -463,6 +480,26 @@ public class ProjectController {
         return buildPlanFileResponse(project.getPlanFilePath(), project.getPlanFileName());
     }
 
+    /**
+     * 项目计划书 PDF 预览（兼容无 planId 的旧数据）
+     */
+    @GetMapping("/{id}/plan-preview-pdf")
+    public ResponseEntity<Resource> previewProjectPlanPdf(@PathVariable Integer id) {
+        Project project = projectService.getById(id);
+        if (project == null) {
+            return ResponseEntity.notFound().build();
+        }
+        List<ProjectPlan> plans = projectPlanMapper.listByProjectId(id);
+        if (plans != null && !plans.isEmpty()) {
+            ProjectPlan plan = plans.get(0);
+            return buildPlanPdfResponse(plan.getFilePath(), plan.getFileName());
+        }
+        if (project.getPlanFilePath() == null || project.getPlanFilePath().isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        return buildPlanPdfResponse(project.getPlanFilePath(), project.getPlanFileName());
+    }
+
     private ResponseEntity<Resource> buildPlanFileResponse(String filePath, String fileName) {
         if (filePath == null || filePath.isBlank()) {
             return ResponseEntity.notFound().build();
@@ -478,9 +515,14 @@ public class ProjectController {
 
         String name = (fileName != null && !fileName.isBlank()) ? fileName : file.getName();
         String lower = name.toLowerCase();
-        MediaType mediaType = lower.endsWith(".doc")
-                ? MediaType.parseMediaType("application/msword")
-                : MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        MediaType mediaType;
+        if (lower.endsWith(".pdf")) {
+            mediaType = MediaType.APPLICATION_PDF;
+        } else if (lower.endsWith(".doc")) {
+            mediaType = MediaType.parseMediaType("application/msword");
+        } else {
+            mediaType = MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        }
 
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
         Resource resource = new FileSystemResource(file);
@@ -489,6 +531,47 @@ public class ProjectController {
                 .contentType(mediaType)
                 .contentLength(file.length())
                 .body(resource);
+    }
+
+    private ResponseEntity<Resource> buildPlanPdfResponse(String filePath, String fileName) {
+        File source = resolveUploadFile(filePath);
+        if (source == null) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            File pdf = wordToPdfUtil.toPdf(source);
+            String pdfName = ((fileName != null && !fileName.isBlank()) ? fileName : source.getName())
+                    .replaceAll("\\.[^.]+$", "") + ".pdf";
+            String encodedName = URLEncoder.encode(pdfName, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+            Resource resource = new FileSystemResource(pdf);
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename*=UTF-8''" + encodedName)
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .contentLength(pdf.length())
+                    .body(resource);
+        } catch (Exception e) {
+            String msg = e.getMessage() == null ? "Word 转 PDF 失败" : e.getMessage().replace("\"", "'");
+            byte[] body = ("{\"code\":0,\"msg\":\"" + msg + "\",\"data\":null}")
+                    .getBytes(StandardCharsets.UTF_8);
+            return ResponseEntity.internalServerError()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new ByteArrayResource(body));
+        }
+    }
+
+    private File resolveUploadFile(String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return null;
+        }
+        String projectRoot = System.getProperty("user.dir");
+        File file = new File(filePath);
+        if (!file.isAbsolute()) {
+            file = new File(projectRoot, filePath);
+        }
+        if (!file.exists() || !file.isFile()) {
+            return null;
+        }
+        return file;
     }
 
     /**

@@ -1,35 +1,53 @@
 package org.example.springbootproject.service.impl;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import org.example.springbootproject.constant.AiReviewConstants;
+import org.example.springbootproject.mapper.AiReviewReportMapper;
 import org.example.springbootproject.mapper.AiReviewSectionMapper;
 import org.example.springbootproject.mapper.AiReviewTaskMapper;
 import org.example.springbootproject.mapper.ProjectMapper;
 import org.example.springbootproject.mapper.ProjectPlanMapper;
-import org.example.springbootproject.pojo.*;
+import org.example.springbootproject.pojo.AiReviewReport;
+import org.example.springbootproject.pojo.AiReviewSection;
+import org.example.springbootproject.pojo.AiReviewTask;
+import org.example.springbootproject.pojo.DocumentParseResult;
+import org.example.springbootproject.pojo.DocumentSection;
+import org.example.springbootproject.pojo.Project;
+import org.example.springbootproject.pojo.ProjectPlan;
+import org.example.springbootproject.pojo.StartReviewRequest;
+import org.example.springbootproject.pojo.StartReviewResponse;
+import org.example.springbootproject.pojo.User;
 import org.example.springbootproject.service.AiReviewService;
 import org.example.springbootproject.service.DocumentParseService;
 import org.example.springbootproject.service.SectionSplitService;
 import org.example.springbootproject.service.UserService;
 import org.example.springbootproject.util.AiReviewPromptUtil;
+import org.example.springbootproject.util.DataCleaningUtil;
 import org.example.springbootproject.util.DeepSeekApiUtil;
+import org.example.springbootproject.util.SectionReviewPolicy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 
 /**
- * AI 评审服务实现类
- * 实现AI评审相关的业务逻辑处理
+ * AI 评审：启动接口立即返回任务 ID，解析和模型调用在独立线程池中执行。
  */
 @Service
 public class AiReviewServiceImpl implements AiReviewService {
+
+    private static final Logger log = LoggerFactory.getLogger(AiReviewServiceImpl.class);
 
     @Autowired
     private DeepSeekApiUtil deepSeekApiUtil;
@@ -39,6 +57,9 @@ public class AiReviewServiceImpl implements AiReviewService {
 
     @Autowired
     private AiReviewSectionMapper aiReviewSectionMapper;
+
+    @Autowired
+    private AiReviewReportMapper aiReviewReportMapper;
 
     @Autowired
     private ProjectMapper projectMapper;
@@ -53,66 +74,59 @@ public class AiReviewServiceImpl implements AiReviewService {
     private DocumentParseService documentParseService;
 
     @Autowired
+    private DataCleaningUtil dataCleaningUtil;
+
+    @Autowired
     private UserService userService;
+
+    @Autowired
+    @Qualifier("aiReviewExecutor")
+    private Executor aiReviewExecutor;
 
     private final Gson gson = new Gson();
 
-    /**
-     * 发起AI评审
-     * @param projectId 项目ID
-     * @param request 评审请求
-     * @param userId 用户ID
-     * @return 评审响应
-     */
     @Override
     public StartReviewResponse startReview(Integer projectId, StartReviewRequest request, Integer userId) {
         try {
-            // 获取项目信息
             Project project = projectMapper.getById(projectId);
             if (project == null) {
                 return new StartReviewResponse(projectId, request.getMode(), null, null, "项目不存在");
             }
 
-            // 检查是否有计划书（检查project表或project_plan表）
-            boolean hasPlan = false;
+            AiReviewTask running = aiReviewTaskMapper.getLatestPendingTask(projectId);
+            if (running != null) {
+                return new StartReviewResponse(projectId, request.getMode(), null, running.getStatus(),
+                        "该项目已有进行中的评审任务，请等待完成后再试");
+            }
+
+            String planPath = null;
             Integer planId = null;
-            
-            // 总是查询 project_plan 表获取 planId
             List<ProjectPlan> plans = projectPlanMapper.listByProjectId(projectId);
-            System.out.println("项目 " + projectId + " 的计划书数量: " + (plans != null ? plans.size() : 0));
-            
             if (plans != null && !plans.isEmpty()) {
-                hasPlan = true;
-                planId = plans.get(0).getId();
-                System.out.println("找到计划书，planId: " + planId);
-                
-                // 如果project表没有计划书路径，更新它
-                if (project.getPlanFilePath() == null || project.getPlanFilePath().isEmpty()) {
-                    ProjectPlan firstPlan = plans.get(0);
+                ProjectPlan firstPlan = plans.get(0);
+                planId = firstPlan.getId();
+                planPath = firstPlan.getFilePath();
+                if ((project.getPlanFilePath() == null || project.getPlanFilePath().isEmpty()) && planPath != null) {
                     project.setPlanFilePath(firstPlan.getFilePath());
                     project.setPlanFileName(firstPlan.getFileName());
                     projectMapper.update(project);
-                    System.out.println("已更新project表计划书路径: " + firstPlan.getFilePath());
                 }
-            } else {
-                // project_plan表也没有计划书
-                System.out.println("项目 " + projectId + " 在project_plan表中也没有计划书");
-                if (project.getPlanFilePath() != null && !project.getPlanFilePath().isEmpty()) {
-                    hasPlan = true;
-                    System.out.println("但project表中有计划书路径: " + project.getPlanFilePath());
-                }
+            } else if (project.getPlanFilePath() != null && !project.getPlanFilePath().isEmpty()) {
+                planPath = project.getPlanFilePath();
             }
-            
-            if (!hasPlan) {
-                System.out.println("项目 " + projectId + " 未上传计划书");
+
+            if (planPath == null || planPath.isEmpty()) {
                 return new StartReviewResponse(projectId, request.getMode(), null, null, "项目未上传计划书");
             }
 
-            // 如果是AI模式，需要API Key
-            if ("AI".equals(request.getMode())) {
-                String apiKey = request.getApiKey();
-                
-                // 如果前端没有传递API Key，则从用户配置中获取
+            String fullPath = resolvePlanFullPath(planPath);
+            if (fullPath == null || !Files.exists(Paths.get(fullPath))) {
+                return new StartReviewResponse(projectId, request.getMode(), null, null, "计划书文件不存在，请重新上传");
+            }
+
+            String apiKey = null;
+            if (AiReviewConstants.REVIEW_MODE_AI.equals(request.getMode())) {
+                apiKey = request.getApiKey();
                 if (apiKey == null || apiKey.trim().isEmpty()) {
                     User user = userService.getById(userId);
                     if (user == null || user.getApiKey() == null || user.getApiKey().trim().isEmpty()) {
@@ -120,323 +134,275 @@ public class AiReviewServiceImpl implements AiReviewService {
                     }
                     apiKey = user.getApiKey();
                 }
-                
-                // 临时设置API Key（本次请求有效）
-                deepSeekApiUtil.setTemporaryApiKey(apiKey);
             }
 
-            // 创建AI评审任务
             AiReviewTask task = new AiReviewTask();
             task.setProjectId(projectId);
             task.setUserId(userId);
             task.setStatus(AiReviewConstants.TASK_STATUS_PENDING);
             task.setCreateTime(LocalDateTime.now());
             task.setMode(request.getMode());
-            task.setReviewMode(request.getMode()); // 同时设置reviewMode字段
-            task.setPlanId(planId); // 使用前面获取的 planId
-            
-            System.out.println("创建AI审核任务，planId: " + planId);
-            
+            task.setReviewMode(request.getMode());
+            task.setPlanId(planId);
             aiReviewTaskMapper.insert(task);
 
-            // 解析文档
-            String projectRoot = System.getProperty("user.dir");
-            String fullPath;
-            
-            // 处理路径分隔符，兼容Windows和Unix
-            String planPath = project.getPlanFilePath().replace("\\", "/");
-            if (planPath.startsWith("/")) {
-                fullPath = projectRoot + planPath;
-            } else {
-                fullPath = projectRoot + "/" + planPath;
-            }
-            
-            // Windows系统处理
-            fullPath = fullPath.replace("/", "\\");
-            
-            System.out.println("准备解析文档，完整路径: " + fullPath);
-            
-            DocumentParseResult parseResult = documentParseService.parseDocument(fullPath);
-            
-            System.out.println("文档解析结果: " + (parseResult != null ? "成功" : "失败"));
-            if (parseResult != null) {
-                System.out.println("段落数量: " + (parseResult.getParagraphs() != null ? parseResult.getParagraphs().size() : 0));
-            }
-            
-            if (parseResult == null || parseResult.getParagraphs() == null || parseResult.getParagraphs().isEmpty()) {
-                String errorMsg = "文档解析失败: " + (parseResult != null && parseResult.getErrorMsg() != null ? parseResult.getErrorMsg() : "未知原因");
-                System.out.println(errorMsg);
-                aiReviewTaskMapper.recordFailure(task.getId(), errorMsg);
-                return new StartReviewResponse(projectId, request.getMode(), task.getId(), AiReviewConstants.TASK_STATUS_FAILED, errorMsg);
+            if (AiReviewConstants.REVIEW_MODE_AI.equals(request.getMode())) {
+                final Integer taskId = task.getId();
+                final String resolvedPath = fullPath;
+                final String resolvedKey = apiKey;
+                aiReviewExecutor.execute(() -> runAiReviewPipeline(taskId, resolvedPath, resolvedKey));
+                return new StartReviewResponse(projectId, request.getMode(), task.getId(),
+                        AiReviewConstants.TASK_STATUS_PENDING, "AI评审已启动");
             }
 
-            // 异步执行AI评审
-            if ("AI".equals(request.getMode())) {
-                executeAiReview(task.getId(), parseResult);
-            } else {
-                // 人工模式，直接标记为完成
-                task.setStatus(AiReviewConstants.TASK_STATUS_DONE);
-                task.setEndTime(LocalDateTime.now());
-                aiReviewTaskMapper.update(task);
-            }
-
-            return new StartReviewResponse(projectId, request.getMode(), task.getId(), task.getStatus(), "AI评审已启动");
+            task.setStatus(AiReviewConstants.TASK_STATUS_DONE);
+            task.setEndTime(LocalDateTime.now());
+            aiReviewTaskMapper.update(task);
+            return new StartReviewResponse(projectId, request.getMode(), task.getId(),
+                    task.getStatus(), "已进入人工审核");
 
         } catch (Exception e) {
-            System.out.println("启动AI评审异常: " + e.getMessage());
-            e.printStackTrace();
+            log.error("启动AI评审失败", e);
             return new StartReviewResponse(projectId, request.getMode(), null, null, "启动AI评审失败: " + e.getMessage());
         }
     }
 
     /**
-     * 执行完整的AI评审流程
-     * @param taskId 任务ID
-     * @param parseResult 文档解析结果
-     * @return 是否成功
+     * 后台执行：解析 → 清洗 → 切分 → 逐章调用模型 → 汇总。
      */
-    @Override
-    @Async
-    public CompletableFuture<Boolean> executeAiReview(Integer taskId, DocumentParseResult parseResult) {
+    private void runAiReviewPipeline(Integer taskId, String fullPath, String apiKey) {
         try {
-            // 检查API Key是否配置
-            if (!deepSeekApiUtil.isApiKeyConfigured()) {
-                aiReviewTaskMapper.recordFailure(taskId, "API Key未配置，请在系统设置中配置DeepSeek API Key");
-                return CompletableFuture.completedFuture(false);
+            if (!deepSeekApiUtil.isApiKeyConfigured(apiKey)) {
+                aiReviewTaskMapper.recordFailure(taskId, "API Key未配置，请在个人设置中配置DeepSeek API Key");
+                return;
             }
 
-            // 获取项目信息
             AiReviewTask task = aiReviewTaskMapper.getById(taskId);
             if (task == null) {
-                return CompletableFuture.completedFuture(false);
+                return;
             }
 
-            Project project = projectMapper.getById(task.getProjectId());
-            if (project == null) {
-                return CompletableFuture.completedFuture(false);
-            }
-
-            // 更新状态为PARSING（文档解析）
-            System.out.println("任务ID " + taskId + " 更新状态为 PARSING");
             aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_PARSING);
-            
-            // 添加延迟，让前端能够看到状态变化
-            Thread.sleep(2000);
+            DocumentParseResult parseResult = documentParseService.parseDocument(fullPath);
+            if (parseResult == null || parseResult.getParagraphs() == null || parseResult.getParagraphs().isEmpty()) {
+                String errorMsg = "文档解析失败: " + (parseResult != null && parseResult.getErrorMsg() != null
+                        ? parseResult.getErrorMsg() : "文档无有效段落");
+                aiReviewTaskMapper.recordFailure(taskId, errorMsg);
+                return;
+            }
 
-            // 执行章节切分
-            List<DocumentSection> sections = sectionSplitService.splitSectionsForTask(taskId, parseResult);
-            
+            aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_CLEANING);
+            DocumentParseResult cleaned = dataCleaningUtil.clean(parseResult);
+            if (cleaned == null || cleaned.getParagraphs() == null || cleaned.getParagraphs().isEmpty()) {
+                String errorMsg = cleaned != null && cleaned.getErrorMsg() != null
+                        ? cleaned.getErrorMsg() : "数据清洗后没有可用段落";
+                aiReviewTaskMapper.recordFailure(taskId, errorMsg);
+                return;
+            }
+
+            aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_SPLITTING);
+            List<DocumentSection> sections = sectionSplitService.splitSectionsForTask(taskId, cleaned);
             if (sections == null || sections.isEmpty()) {
                 aiReviewTaskMapper.recordFailure(taskId, "章节切分失败");
-                return CompletableFuture.completedFuture(false);
+                return;
+            }
+            for (DocumentSection section : sections) {
+                SectionReviewPolicy.applyKindAndWeight(section);
             }
 
-            // 更新状态为SPLITTING（章节切分完成）
-            System.out.println("任务ID " + taskId + " 更新状态为 SPLITTING");
-            aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_SPLITTING);
-            
-            // 添加延迟，让前端能够看到状态变化
-            Thread.sleep(2000);
-
-            // 执行章节评审
-            boolean sectionReviewSuccess = executeSectionReview(taskId, sections);
-            
-            if (!sectionReviewSuccess) {
-                return CompletableFuture.completedFuture(false);
+            if (!executeSectionReview(taskId, sections, apiKey)) {
+                return;
             }
 
-            // 执行合并总结
-            boolean summarySuccess = executeSummary(taskId, sections);
-            
-            return CompletableFuture.completedFuture(summarySuccess);
+            executeSummary(taskId, sections, apiKey);
 
         } catch (Exception e) {
-            String errorMsg = "AI评审异常: " + (e.getMessage() != null && e.getMessage().length() > 200 ? e.getMessage().substring(0, 200) : e.getMessage());
+            String errorMsg = "AI评审异常: " + truncate(e.getMessage(), 200);
+            log.error("AI评审任务 {} 失败", taskId, e);
             aiReviewTaskMapper.recordFailure(taskId, errorMsg);
-            e.printStackTrace();
-            return CompletableFuture.completedFuture(false);
         }
     }
 
-    /**
-     * 执行章节评审
-     * @param taskId 任务ID
-     * @param sections 章节列表
-     * @return 是否成功
-     */
-    @Override
-    public boolean executeSectionReview(Integer taskId, List<DocumentSection> sections) {
+    private boolean executeSectionReview(Integer taskId, List<DocumentSection> sections, String apiKey) {
         try {
-            // 更新任务状态为REVIEWING
             aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_REVIEWING);
 
             AiReviewTask task = aiReviewTaskMapper.getById(taskId);
             Project project = projectMapper.getById(task.getProjectId());
 
             int sectionDone = 0;
-            int totalScore = 0; // 用于累加，后续改为加权计算
+            int eligible = 0;
 
             for (int i = 0; i < sections.size(); i++) {
                 DocumentSection section = sections.get(i);
-                
-                // 跳过内容过少的章节
-                if (section.getCharCount() < AiReviewConstants.MIN_SECTION_CHARS) {
+                if (section.getCharCount() == null || section.getCharCount() < AiReviewConstants.MIN_SECTION_CHARS) {
                     continue;
                 }
+                eligible++;
 
                 try {
-                    // 生成提示词
                     AiReviewPromptUtil.PromptPair promptPair = AiReviewPromptUtil.buildSectionReviewPrompt(
-                        project, section, i + 1, sections.size()
+                            project, section, i + 1, sections.size()
                     );
 
-                    // 调用DeepSeek API
                     String response = deepSeekApiUtil.callDeepSeekApi(
-                        promptPair.getSystemPrompt(),
-                        promptPair.getUserPrompt()
+                            promptPair.getSystemPrompt(),
+                            promptPair.getUserPrompt(),
+                            apiKey
                     );
 
-                    // 解析响应
                     JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
-                    
-                    // 提取评分
-                    double sectionScore = calculateSectionScore(jsonResponse);
+                    SectionReviewPolicy.Kind kind = section.getSectionKind() != null
+                            ? SectionReviewPolicy.Kind.valueOf(section.getSectionKind())
+                            : SectionReviewPolicy.classify(section.getSectionTitle());
+                    List<SectionReviewPolicy.Dimension> expected = SectionReviewPolicy.dimensionsFor(kind);
+                    Double sectionScore = calculateSectionScore(jsonResponse, expected);
+                    if (sectionScore == null) {
+                        updateSectionRecord(taskId, section, jsonResponse, "PARSE_FAIL");
+                        continue;
+                    }
+
                     section.setScore(sectionScore);
-
-                    // 更新章节记录
+                    fillSectionOpinions(section, jsonResponse);
                     updateSectionRecord(taskId, section, jsonResponse, "SUCCESS");
-
                     sectionDone++;
+                    aiReviewTaskMapper.updateProgress(taskId, sectionDone);
 
                 } catch (Exception e) {
-                    // 单章失败，记录错误但不影响其他章节
-                    String errorMsg = "章节评审失败: " + (e.getMessage() != null && e.getMessage().length() > 100 ? e.getMessage().substring(0, 100) : e.getMessage());
-                    updateSectionRecord(taskId, section, null, errorMsg);
+                    log.warn("章节评审失败: {}", section.getSectionTitle(), e);
+                    updateSectionRecord(taskId, section, null, "FAIL:" + truncate(e.getMessage(), 40));
                 }
             }
 
-            // 更新任务进度
-            aiReviewTaskMapper.updateProgress(taskId, sectionDone);
+            if (eligible == 0) {
+                aiReviewTaskMapper.recordFailure(taskId, "没有达到最小字数的可评审章节");
+                return false;
+            }
+            if (sectionDone == 0) {
+                aiReviewTaskMapper.recordFailure(taskId, "全部章节评审失败，请检查 API Key 或模型返回格式");
+                return false;
+            }
 
             return true;
-
         } catch (Exception e) {
-            aiReviewTaskMapper.recordFailure(taskId, "章节评审失败: " + e.getMessage());
+            aiReviewTaskMapper.recordFailure(taskId, "章节评审失败: " + truncate(e.getMessage(), 200));
             return false;
         }
     }
 
-    /**
-     * 执行合并总结
-     * @param taskId 任务ID
-     * @param sections 章节列表
-     * @return 是否成功
-     */
-    @Override
-    public boolean executeSummary(Integer taskId, List<DocumentSection> sections) {
+    private boolean executeSummary(Integer taskId, List<DocumentSection> sections, String apiKey) {
         try {
-            // 更新任务状态为SUMMARIZING
             aiReviewTaskMapper.updateStatus(taskId, AiReviewConstants.TASK_STATUS_SUMMARIZING);
 
             AiReviewTask task = aiReviewTaskMapper.getById(taskId);
             Project project = projectMapper.getById(task.getProjectId());
 
-            // 计算综合得分（加权平均）
-            double totalScore = calculateTotalScore(sections);
+            Double totalScore = calculateTotalScore(sections);
+            if (totalScore == null) {
+                aiReviewTaskMapper.recordFailure(taskId, "没有有效章节得分，无法汇总");
+                return false;
+            }
             String grade = calculateGrade(totalScore);
+            List<String> missingSections = SectionReviewPolicy.findMissingSections(sections);
 
-            // 生成总结提示词
             AiReviewPromptUtil.PromptPair promptPair = AiReviewPromptUtil.buildSummaryPrompt(
-                project, sections, totalScore, grade
+                    project, sections, totalScore, grade, missingSections
             );
 
-            // 调用DeepSeek API
             String response = deepSeekApiUtil.callDeepSeekApi(
-                promptPair.getSystemPrompt(),
-                promptPair.getUserPrompt()
+                    promptPair.getSystemPrompt(),
+                    promptPair.getUserPrompt(),
+                    apiKey
             );
 
-            // 解析响应
             JsonObject jsonResponse = gson.fromJson(response, JsonObject.class);
-            
-            // 将summary从JSON转换为纯文本
+
             String summaryText = "";
-            if (jsonResponse.has("summary")) {
+            if (jsonResponse != null && jsonResponse.has("summary") && !jsonResponse.get("summary").isJsonNull()) {
                 summaryText = jsonResponse.get("summary").getAsString();
             }
-            
-            // 更新任务结果
-            task.setTotalScore(new BigDecimal(totalScore));
+
+            task.setTotalScore(BigDecimal.valueOf(totalScore));
             task.setGrade(grade);
-            task.setSummary(summaryText); // 设置纯文本的summary
+            task.setSummary(summaryText);
             task.setStatus(AiReviewConstants.TASK_STATUS_DONE);
             task.setEndTime(LocalDateTime.now());
             aiReviewTaskMapper.updateResult(task);
-
-            // 保存报告
-            saveReport(taskId, jsonResponse);
+            saveReport(taskId, totalScore, grade, jsonResponse, missingSections);
 
             return true;
-
         } catch (Exception e) {
-            aiReviewTaskMapper.recordFailure(taskId, "合并总结失败: " + e.getMessage());
+            aiReviewTaskMapper.recordFailure(taskId, "合并总结失败: " + truncate(e.getMessage(), 200));
             return false;
         }
     }
 
     /**
-     * 计算章节得分
-     * @param jsonResponse AI响应JSON
-     * @return 章节得分（0-5）
+     * 只按本章应评维度、按维度名加权；缺维度则本章失败，不默认给分。
      */
-    private double calculateSectionScore(JsonObject jsonResponse) {
-        try {
-            if (jsonResponse.has("dimensions") && jsonResponse.getAsJsonArray("dimensions").size() > 0) {
-                double totalScore = 0;
-                double[] weights = {0.25, 0.25, 0.25, 0.25}; // 完整性、创新性、可行性、论证充分性
-                
-                for (int i = 0; i < jsonResponse.getAsJsonArray("dimensions").size(); i++) {
-                    JsonObject dimension = jsonResponse.getAsJsonArray("dimensions").get(i).getAsJsonObject();
-                    if (dimension.has("score")) {
-                        totalScore += dimension.get("score").getAsDouble() * weights[i];
-                    }
-                }
-                
-                return totalScore;
-            }
-        } catch (Exception e) {
-            // 解析失败，返回默认分数
+    private Double calculateSectionScore(JsonObject jsonResponse, List<SectionReviewPolicy.Dimension> expected) {
+        if (jsonResponse == null || expected == null || expected.isEmpty()
+                || !jsonResponse.has("dimensions") || !jsonResponse.get("dimensions").isJsonArray()) {
+            return null;
         }
-        return 3.0; // 默认3分
+        JsonArray dimensions = jsonResponse.getAsJsonArray("dimensions");
+        java.util.Map<String, Double> scoreByName = new java.util.HashMap<>();
+        for (int i = 0; i < dimensions.size(); i++) {
+            if (!dimensions.get(i).isJsonObject()) {
+                continue;
+            }
+            JsonObject dimension = dimensions.get(i).getAsJsonObject();
+            if (!dimension.has("name") || !dimension.has("score")) {
+                continue;
+            }
+            scoreByName.put(dimension.get("name").getAsString(), dimension.get("score").getAsDouble());
+        }
+
+        double weighted = 0;
+        double weightSum = 0;
+        for (SectionReviewPolicy.Dimension dim : expected) {
+            Double score = scoreByName.get(dim.getName());
+            if (score == null) {
+                return null;
+            }
+            weighted += score * dim.getWeight();
+            weightSum += dim.getWeight();
+        }
+        if (weightSum <= 0) {
+            return null;
+        }
+        return weighted / weightSum;
     }
 
     /**
-     * 计算综合得分（加权平均）
-     * @param sections 章节列表
-     * @return 综合得分（0-100）
+     * 仅统计有得分的章节，并按这些章节的权重重新归一化。
      */
-    private double calculateTotalScore(List<DocumentSection> sections) {
-        double totalScore = 0;
-        
+    private Double calculateTotalScore(List<DocumentSection> sections) {
         if (sections == null || sections.isEmpty()) {
-            return totalScore;
+            return null;
         }
 
+        double weighted = 0;
+        double weightSum = 0;
         for (DocumentSection section : sections) {
-            if (section.getScore() != null && section.getWeight() != null) {
-                // 章节得分(0-5) × 20 = 0-100分制
-                totalScore += section.getScore() * 20 * section.getWeight();
+            if (section.getScore() == null) {
+                continue;
             }
+            double weight = section.getWeight() != null && section.getWeight() > 0
+                    ? section.getWeight()
+                    : 0.08;
+            if (weight <= 0) {
+                continue;
+            }
+            weighted += section.getScore() * 20 * weight;
+            weightSum += weight;
         }
-        
-        return totalScore;
+        if (weightSum <= 0) {
+            return null;
+        }
+        return weighted / weightSum;
     }
 
-    /**
-     * 计算等级
-     * @param totalScore 综合得分
-     * @return 等级
-     */
     private String calculateGrade(double totalScore) {
         if (totalScore >= AiReviewConstants.GRADE_A_THRESHOLD) {
             return AiReviewConstants.GRADE_A;
@@ -444,18 +410,10 @@ public class AiReviewServiceImpl implements AiReviewService {
             return AiReviewConstants.GRADE_B;
         } else if (totalScore >= AiReviewConstants.GRADE_C_THRESHOLD) {
             return AiReviewConstants.GRADE_C;
-        } else {
-            return AiReviewConstants.GRADE_D;
         }
+        return AiReviewConstants.GRADE_D;
     }
 
-    /**
-     * 更新章节记录
-     * @param taskId 任务ID
-     * @param section 章节信息
-     * @param jsonResponse AI响应JSON
-     * @param status 状态
-     */
     private void updateSectionRecord(Integer taskId, DocumentSection section, JsonObject jsonResponse, String status) {
         AiReviewSection aiSection = new AiReviewSection();
         aiSection.setTaskId(taskId);
@@ -464,13 +422,11 @@ public class AiReviewServiceImpl implements AiReviewService {
         aiSection.setSectionLevel(section.getSectionLevel());
         aiSection.setCharCount(section.getCharCount());
         aiSection.setScore(section.getScore());
-        aiSection.setStatus(status.length() > 15 ? status.substring(0, 15) : status); // 限制status长度
+        aiSection.setStatus(status.length() > 15 ? status.substring(0, 15) : status);
         aiSection.setCreateTime(LocalDateTime.now());
-        
+
         if (jsonResponse != null) {
             aiSection.setDimensions(jsonResponse.has("dimensions") ? jsonResponse.get("dimensions").toString() : null);
-            
-            // 将JSON数组转换为纯文本字符串
             aiSection.setStrengths(jsonResponse.has("strengths") ? convertJsonArrayToText(jsonResponse.getAsJsonArray("strengths")) : null);
             aiSection.setWeaknesses(jsonResponse.has("weaknesses") ? convertJsonArrayToText(jsonResponse.getAsJsonArray("weaknesses")) : null);
             aiSection.setRisks(jsonResponse.has("risks") ? convertJsonArrayToText(jsonResponse.getAsJsonArray("risks")) : null);
@@ -481,76 +437,127 @@ public class AiReviewServiceImpl implements AiReviewService {
         try {
             aiReviewSectionMapper.insert(aiSection);
         } catch (Exception e) {
-            System.out.println("保存章节记录失败: " + e.getMessage());
-            e.printStackTrace();
+            log.error("保存章节记录失败", e);
         }
     }
 
-    /**
-     * 将JSON数组转换为纯文本字符串
-     * @param jsonArray JSON数组
-     * @return 纯文本字符串
-     */
-    private String convertJsonArrayToText(com.google.gson.JsonArray jsonArray) {
+    private void fillSectionOpinions(DocumentSection section, JsonObject jsonResponse) {
+        if (jsonResponse == null) {
+            return;
+        }
+        if (jsonResponse.has("strengths")) {
+            section.setStrengths(convertJsonArrayToText(jsonResponse.getAsJsonArray("strengths")));
+        }
+        if (jsonResponse.has("weaknesses")) {
+            section.setWeaknesses(convertJsonArrayToText(jsonResponse.getAsJsonArray("weaknesses")));
+        }
+        if (jsonResponse.has("risks")) {
+            section.setRisks(convertJsonArrayToText(jsonResponse.getAsJsonArray("risks")));
+        }
+        if (jsonResponse.has("suggestions")) {
+            section.setSuggestions(convertJsonArrayToText(jsonResponse.getAsJsonArray("suggestions")));
+        }
+    }
+
+    private void saveReport(Integer taskId, double totalScore, String grade,
+                            JsonObject jsonResponse, List<String> missingSections) {
+        try {
+            AiReviewReport report = new AiReviewReport();
+            report.setTaskId(taskId);
+            report.setTotalScore(BigDecimal.valueOf(totalScore));
+            report.setGrade(grade);
+            report.setCreateTime(LocalDateTime.now());
+            if (jsonResponse != null) {
+                report.setSummary(jsonFieldAsString(jsonResponse, "summary"));
+                report.setHighlights(jsonElementAsText(jsonResponse, "highlights"));
+                report.setMainProblems(jsonElementAsText(jsonResponse, "main_problems"));
+                report.setRisks(jsonElementAsText(jsonResponse, "risks"));
+                report.setSuggestions(jsonElementAsText(jsonResponse, "suggestions"));
+                report.setAiRecommendation(jsonFieldAsString(jsonResponse, "ai_recommendation"));
+                report.setConsistencyNote(jsonFieldAsString(jsonResponse, "consistency_note"));
+                report.setRawJson(jsonResponse.toString());
+            }
+            report.setMissingSections(gson.toJson(missingSections == null ? List.of() : missingSections));
+            aiReviewReportMapper.deleteByTaskId(taskId);
+            aiReviewReportMapper.insert(report);
+        } catch (Exception e) {
+            log.error("保存AI评审报告失败, taskId={}", taskId, e);
+        }
+    }
+
+    private String jsonFieldAsString(JsonObject json, String field) {
+        if (json == null || !json.has(field) || json.get(field).isJsonNull()) {
+            return null;
+        }
+        if (json.get(field).isJsonPrimitive()) {
+            return json.get(field).getAsString();
+        }
+        return json.get(field).toString();
+    }
+
+    private String jsonElementAsText(JsonObject json, String field) {
+        if (json == null || !json.has(field) || json.get(field).isJsonNull()) {
+            return null;
+        }
+        return json.get(field).toString();
+    }
+
+    private String convertJsonArrayToText(JsonArray jsonArray) {
         if (jsonArray == null || jsonArray.size() == 0) {
             return null;
         }
-        
         StringBuilder result = new StringBuilder();
         for (int i = 0; i < jsonArray.size(); i++) {
             if (i > 0) {
                 result.append("\n");
             }
-            
             com.google.gson.JsonElement element = jsonArray.get(i);
             if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
-                // 如果是字符串，直接添加
                 result.append(element.getAsString());
             } else if (element.isJsonObject()) {
-                // 如果是对象，尝试提取point字段
                 JsonObject obj = element.getAsJsonObject();
                 if (obj.has("point")) {
                     result.append(obj.get("point").getAsString());
                 } else {
-                    // 如果没有point字段，直接添加toString
                     result.append(element.toString());
                 }
             } else {
-                // 其他情况，直接添加toString
                 result.append(element.toString());
             }
         }
-        
         return result.toString();
     }
 
-    /**
-     * 保存报告
-     * @param taskId 任务ID
-     * @param jsonResponse AI响应JSON
-     */
-    private void saveReport(Integer taskId, JsonObject jsonResponse) {
-        // TODO: 实现报告保存到 ai_review_report 表
-        // 暂时跳过，后续可以添加
+    private String resolvePlanFullPath(String planFilePath) {
+        if (planFilePath == null || planFilePath.isBlank()) {
+            return null;
+        }
+        Path given = Paths.get(planFilePath);
+        if (given.isAbsolute() && Files.exists(given)) {
+            return given.toAbsolutePath().normalize().toString();
+        }
+        String normalized = planFilePath.replace("\\", "/");
+        if (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        Path resolved = Paths.get(System.getProperty("user.dir")).resolve(normalized).normalize();
+        return resolved.toString();
     }
 
-    /**
-     * 获取AI评审任务详情
-     * @param taskId 任务ID
-     * @return 任务详情
-     */
+    private String truncate(String text, int max) {
+        if (text == null) {
+            return "";
+        }
+        return text.length() > max ? text.substring(0, max) : text;
+    }
+
     @Override
     public AiReviewTask getAiReviewTask(Integer taskId) {
         return aiReviewTaskMapper.getById(taskId);
     }
-    
-    /**
-     * 获取AI评审章节详情
-     * @param taskId 任务ID
-     * @return 章节列表
-     */
+
     @Override
-    public List<org.example.springbootproject.pojo.AiReviewSection> getAiReviewSections(Integer taskId) {
+    public List<AiReviewSection> getAiReviewSections(Integer taskId) {
         return aiReviewSectionMapper.listByTaskId(taskId);
     }
 }

@@ -153,100 +153,140 @@
     <!-- AI审核进度弹窗 -->
     <el-dialog
       v-model="aiReviewProgressVisible"
-      title="AI审核进度"
-      width="600px"
+      class="ai-review-dialog"
+      width="680px"
       :close-on-click-modal="false"
+      :show-close="!aiReviewProgress.isRunning"
     >
+      <template #header>
+        <div class="ai-dialog-header">
+          <div class="ai-dialog-icon">
+            <el-icon :size="22"><MagicStick /></el-icon>
+          </div>
+          <div>
+            <p class="ai-dialog-title">AI 智能审核</p>
+            <p class="ai-dialog-sub">正在阅读计划书并生成评审意见</p>
+          </div>
+        </div>
+      </template>
       <div class="ai-review-progress">
-        <el-steps :active="aiReviewProgress.currentStep" align-center>
+        <el-steps :active="aiReviewProgress.currentStep" align-center finish-status="success">
           <el-step title="文档解析" />
+          <el-step title="数据清洗" />
           <el-step title="章节切分" />
           <el-step title="AI评审" />
           <el-step title="结果合并" />
         </el-steps>
-        <div class="progress-status">
-          <el-progress 
-            :percentage="aiReviewProgress.percentage" 
+        <div class="progress-panel">
+          <div class="progress-percent">{{ Math.round(aiReviewProgress.percentage) }}%</div>
+          <el-progress
+            :percentage="aiReviewProgress.percentage"
             :status="aiReviewProgress.status"
+            :stroke-width="10"
+            :show-text="false"
           />
-          <p class="status-text">{{ aiReviewProgress.statusText }}</p>
+          <p class="status-text">
+            <span v-if="aiReviewProgress.isRunning" class="status-dot" />
+            {{ aiReviewProgress.statusText }}
+          </p>
         </div>
       </div>
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="aiReviewProgressVisible = false" :disabled="aiReviewProgress.isRunning">关闭</el-button>
-        </span>
+        <el-button @click="aiReviewProgressVisible = false" :disabled="aiReviewProgress.isRunning">关闭</el-button>
       </template>
     </el-dialog>
 
     <!-- AI审核结果弹窗 -->
     <el-dialog
       v-model="aiReviewResultVisible"
-      title="AI审核结果"
-      width="800px"
+      class="ai-review-dialog"
+      width="860px"
     >
+      <template #header>
+        <div class="ai-dialog-header">
+          <div class="ai-dialog-icon is-done">
+            <el-icon :size="22"><CircleCheck /></el-icon>
+          </div>
+          <div>
+            <p class="ai-dialog-title">AI 审核结果</p>
+            <p class="ai-dialog-sub">以下意见仅供参考，最终结论由人工确认</p>
+          </div>
+        </div>
+      </template>
       <div class="ai-review-result">
-        <el-descriptions :column="2" border>
-          <el-descriptions-item label="项目名称">{{ aiReviewResult.projectName }}</el-descriptions-item>
-          <el-descriptions-item label="综合得分">
-            <el-tag :type="getScoreType(aiReviewResult.totalScore)" size="large">
-              {{ aiReviewResult.totalScore }}分
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="评审等级">
-            <el-tag :type="getGradeType(aiReviewResult.grade)" size="large">
-              {{ aiReviewResult.grade }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="审核时间">{{ aiReviewResult.reviewTime }}</el-descriptions-item>
-        </el-descriptions>
-
-        <div class="result-section">
-          <h4>章节评审详情</h4>
-          <el-table :data="aiReviewResult.sections" border style="width: 100%; margin-top: 10px">
-            <el-table-column prop="sectionTitle" label="章节名称" width="200" />
-            <el-table-column prop="score" label="得分" width="80" align="center">
-              <template #default="{ row }">
-                {{ row.score }}分
-              </template>
-            </el-table-column>
-            <el-table-column prop="strengths" label="优点" show-overflow-tooltip>
-              <template #default="{ row }">
-                <div v-html="formatAiContent(row.strengths)"></div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="weaknesses" label="不足" show-overflow-tooltip>
-              <template #default="{ row }">
-                <div v-html="formatAiContent(row.weaknesses)"></div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="suggestions" label="建议" show-overflow-tooltip>
-              <template #default="{ row }">
-                <div v-html="formatAiContent(row.suggestions)"></div>
-              </template>
-            </el-table-column>
-          </el-table>
+        <div class="result-hero">
+          <div class="score-ring" :class="'grade-' + (aiReviewResult.grade || 'C').toLowerCase()">
+            <span class="score-value">{{ formatTotalScore(aiReviewResult.totalScore) }}</span>
+            <span class="score-unit">分</span>
+          </div>
+          <div class="hero-meta">
+            <h3 class="hero-name">{{ aiReviewResult.projectName || '未命名项目' }}</h3>
+            <div class="hero-tags">
+              <el-tag :type="getGradeType(aiReviewResult.grade)" effect="dark" round>
+                等级 {{ aiReviewResult.grade || '-' }}
+              </el-tag>
+              <span class="hero-time">{{ aiReviewResult.reviewTime || '-' }}</span>
+            </div>
+            <p class="hero-hint">综合得分由各章节加权汇总，不由模型直接给出</p>
+          </div>
         </div>
 
-        <div class="result-section">
-          <h4>总体评价</h4>
-          <div class="summary-text" v-html="formatAiContent(aiReviewResult.summary)"></div>
+        <div class="result-block">
+          <div class="block-title">总体评价</div>
+          <div class="summary-card">{{ formatAiPlain(aiReviewResult.summary) || '暂无总体评价' }}</div>
+        </div>
+
+        <div class="result-block">
+          <div class="block-title">章节评审</div>
+          <div v-if="!aiReviewResult.sections.length" class="empty-hint">暂无章节详情</div>
+          <div v-else class="section-list">
+            <div v-for="(row, index) in aiReviewResult.sections" :key="index" class="section-card">
+              <div class="section-head">
+                <span class="section-index">{{ index + 1 }}</span>
+                <span class="section-name">{{ row.sectionTitle || '未命名章节' }}</span>
+                <span class="section-score" :class="sectionScoreClass(row.score)">
+                  {{ formatSectionScore(row.score) }}
+                </span>
+              </div>
+              <div class="section-grid">
+                <div class="opinion-col is-good">
+                  <p class="opinion-label">优点</p>
+                  <ul>
+                    <li v-for="(item, i) in splitAiLines(row.strengths)" :key="'s' + i">{{ item }}</li>
+                    <li v-if="!splitAiLines(row.strengths).length" class="is-empty">暂无</li>
+                  </ul>
+                </div>
+                <div class="opinion-col is-bad">
+                  <p class="opinion-label">不足</p>
+                  <ul>
+                    <li v-for="(item, i) in splitAiLines(row.weaknesses)" :key="'w' + i">{{ item }}</li>
+                    <li v-if="!splitAiLines(row.weaknesses).length" class="is-empty">暂无</li>
+                  </ul>
+                </div>
+                <div class="opinion-col is-tip">
+                  <p class="opinion-label">建议</p>
+                  <ul>
+                    <li v-for="(item, i) in splitAiLines(row.suggestions)" :key="'g' + i">{{ item }}</li>
+                    <li v-if="!splitAiLines(row.suggestions).length" class="is-empty">暂无</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="aiReviewResultVisible = false">关闭</el-button>
-          <el-button type="primary" @click="handleApproveAfterAiReview">审批通过</el-button>
-        </span>
+        <el-button @click="aiReviewResultVisible = false">关闭</el-button>
+        <el-button type="primary" @click="handleApproveAfterAiReview">审批通过</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh } from '@element-plus/icons-vue'
+import { Search, Refresh, MagicStick, CircleCheck } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useLoginStore } from '@/stores/login'
 import request from '@/utils/request'
@@ -294,11 +334,75 @@ const aiReviewProgressVisible = ref(false)
 const aiReviewProgress = reactive({
   currentStep: 0,
   percentage: 0,
-  status: 'success' as any,
+  status: '' as any,
   statusText: '',
   isRunning: false,
   currentProjectId: 0
 })
+
+let aiReviewPollTimer: ReturnType<typeof setInterval> | null = null
+const AI_REVIEW_MAX_POLLS = 450
+const AI_REVIEW_STATUS_ORDER = ['PENDING', 'PARSING', 'CLEANING', 'SPLITTING', 'REVIEWING', 'SUMMARIZING', 'DONE']
+const AI_REVIEW_STATUS_MAP: Record<string, { step: number; percentage: number; text: string }> = {
+  PENDING: { step: 0, percentage: 5, text: '等待处理' },
+  PARSING: { step: 0, percentage: 12, text: '正在解析文档' },
+  CLEANING: { step: 1, percentage: 28, text: '正在清洗数据' },
+  SPLITTING: { step: 2, percentage: 42, text: '正在切分章节' },
+  REVIEWING: { step: 3, percentage: 65, text: '正在进行AI评审' },
+  SUMMARIZING: { step: 4, percentage: 88, text: '正在合并结果' },
+  DONE: { step: 5, percentage: 100, text: '审核完成' }
+}
+
+let displayedAiStatus = 'PENDING'
+let latestBackendStatus = 'PENDING'
+let progressCatchUpRunning = false
+let pendingDoneTask: { task: any; taskId: number } | null = null
+
+const clearAiReviewPoll = () => {
+  if (aiReviewPollTimer) {
+    clearInterval(aiReviewPollTimer)
+    aiReviewPollTimer = null
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const applyAiReviewStatus = (status: string) => {
+  const progress = AI_REVIEW_STATUS_MAP[status] || { step: 0, percentage: 0, text: '处理中' }
+  aiReviewProgress.currentStep = progress.step
+  aiReviewProgress.percentage = progress.percentage
+  aiReviewProgress.statusText = progress.text
+}
+
+const catchUpAiReviewProgress = async () => {
+  if (progressCatchUpRunning) {
+    return
+  }
+  progressCatchUpRunning = true
+  try {
+    while (latestBackendStatus !== 'FAILED') {
+      const from = AI_REVIEW_STATUS_ORDER.indexOf(displayedAiStatus)
+      const to = AI_REVIEW_STATUS_ORDER.indexOf(latestBackendStatus)
+      if (from < 0 || to < 0 || from >= to) {
+        break
+      }
+      const next = AI_REVIEW_STATUS_ORDER[from + 1]
+      displayedAiStatus = next
+      applyAiReviewStatus(next)
+      if (next !== 'DONE' && next !== latestBackendStatus) {
+        await sleep(600)
+      }
+    }
+    if (latestBackendStatus === 'DONE' && displayedAiStatus === 'DONE' && pendingDoneTask) {
+      const done = pendingDoneTask
+      pendingDoneTask = null
+      aiReviewProgress.isRunning = false
+      showAiReviewResult(done.task, done.taskId)
+    }
+  } finally {
+    progressCatchUpRunning = false
+  }
+}
 
 // AI审核结果弹窗
 const aiReviewResultVisible = ref(false)
@@ -508,9 +612,15 @@ const startAiReviewProcess = async (projectId: number, projectName: string) => {
     aiReviewProgressVisible.value = true
     
     // 初始化进度
+    clearAiReviewPoll()
+    displayedAiStatus = 'PENDING'
+    latestBackendStatus = 'PENDING'
+    pendingDoneTask = null
+    progressCatchUpRunning = false
     aiReviewProgress.currentStep = 0
-    aiReviewProgress.percentage = 0
-    aiReviewProgress.statusText = '开始AI审核...'
+    aiReviewProgress.percentage = 5
+    aiReviewProgress.status = ''
+    aiReviewProgress.statusText = '任务已提交，等待后台处理...'
     aiReviewProgress.isRunning = true
     aiReviewProgress.currentProjectId = projectId
 
@@ -535,33 +645,36 @@ const startAiReviewProcess = async (projectId: number, projectName: string) => {
   }
 }
 
-// 轮询AI审核状态
 const pollAiReviewStatus = async (taskId: number) => {
-  const pollInterval = setInterval(async () => {
+  clearAiReviewPoll()
+  let pollCount = 0
+  aiReviewPollTimer = setInterval(async () => {
+    pollCount++
+    if (pollCount > AI_REVIEW_MAX_POLLS) {
+      clearAiReviewPoll()
+      aiReviewProgress.isRunning = false
+      aiReviewProgress.status = 'exception'
+      aiReviewProgress.statusText = '审核超时，请稍后在进度管理中查看结果'
+      ElMessage.error('AI审核超时')
+      return
+    }
     try {
       const task = await request.get(`/projects/ai-review/${taskId}`)
-      console.log('AI审核任务状态:', task)
 
       if (!task) {
-        clearInterval(pollInterval)
+        clearAiReviewPoll()
         throw new Error('任务不存在')
       }
 
-      // 更新进度
-      updateProgressByStatus(task.status)
+      latestBackendStatus = task.status
+      catchUpAiReviewProgress()
 
       if (task.status === 'DONE') {
-        clearInterval(pollInterval)
-        aiReviewProgress.isRunning = false
-        aiReviewProgress.percentage = 100
-        aiReviewProgress.statusText = '审核完成'
-        
-        // 停顿1秒后显示审核结果
-        setTimeout(() => {
-          showAiReviewResult(task, taskId)
-        }, 1000)
+        clearAiReviewPoll()
+        pendingDoneTask = { task, taskId }
+        catchUpAiReviewProgress()
       } else if (task.status === 'FAILED') {
-        clearInterval(pollInterval)
+        clearAiReviewPoll()
         aiReviewProgress.isRunning = false
         aiReviewProgress.status = 'exception'
         aiReviewProgress.statusText = 'AI审核失败: ' + (task.errorMsg || task.errorMessage || '未知错误')
@@ -569,32 +682,13 @@ const pollAiReviewStatus = async (taskId: number) => {
       }
     } catch (error: any) {
       console.error('轮询AI审核状态失败:', error)
-      clearInterval(pollInterval)
+      clearAiReviewPoll()
       aiReviewProgress.isRunning = false
       aiReviewProgress.status = 'exception'
       aiReviewProgress.statusText = '查询审核状态失败'
       ElMessage.error(error.message || '查询审核状态失败')
     }
-  }, 2000) // 每2秒轮询一次
-}
-
-// 根据状态更新进度
-const updateProgressByStatus = (status: string) => {
-  // 步骤0: 文档解析, 步骤1: 章节切分, 步骤2: AI评审, 步骤3: 结果合并
-  const statusMap: Record<string, { step: number; percentage: number; text: string }> = {
-    'PENDING': { step: 0, percentage: 5, text: '等待处理' },
-    'PARSING': { step: 0, percentage: 15, text: '正在解析文档' },
-    'CLEANING': { step: 0, percentage: 25, text: '正在清洗数据' },
-    'SPLITTING': { step: 1, percentage: 40, text: '正在切分章节' },
-    'REVIEWING': { step: 2, percentage: 60, text: '正在进行AI评审' },
-    'SUMMARIZING': { step: 3, percentage: 85, text: '正在合并结果' },
-    'DONE': { step: 4, percentage: 100, text: '审核完成' }
-  }
-
-  const progress = statusMap[status] || { step: 0, percentage: 0, text: '处理中' }
-  aiReviewProgress.currentStep = progress.step
-  aiReviewProgress.percentage = progress.percentage
-  aiReviewProgress.statusText = progress.text
+  }, 800)
 }
 
 // 显示AI审核结果
@@ -630,11 +724,37 @@ const handleApproveAfterAiReview = async () => {
   }
 }
 
-// 获取分数对应的标签类型
-const getScoreType = (score: number) => {
-  if (score >= 80) return 'success'
-  if (score >= 60) return 'warning'
-  return 'danger'
+const formatTotalScore = (score: number) => {
+  if (score == null || Number.isNaN(Number(score))) return '--'
+  return Number(score).toFixed(1)
+}
+
+const formatSectionScore = (score: number) => {
+  if (score == null || Number.isNaN(Number(score))) return '--'
+  return `${Number(score).toFixed(1)} / 5`
+}
+
+const sectionScoreClass = (score: number) => {
+  if (score >= 4) return 'is-high'
+  if (score >= 3) return 'is-mid'
+  return 'is-low'
+}
+
+const formatAiPlain = (content: string) => {
+  if (!content) return ''
+  return content
+    .replace(/```json|```/g, '')
+    .replace(/^[{\[]|[}\]]$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+const splitAiLines = (content: string) => {
+  if (!content) return [] as string[]
+  return content
+    .split(/\n+/)
+    .map((line) => line.replace(/^[\d]+[、.．]\s*/, '').trim())
+    .filter((line) => line.length > 0)
 }
 
 // 获取等级对应的标签类型
@@ -653,39 +773,14 @@ const getGradeType = (grade: string) => {
   }
 }
 
-// 格式化AI返回的内容，去掉英文和括号，分条显示
-const formatAiContent = (content: string) => {
-  if (!content) return ''
-  
-  // 去掉JSON格式和括号
-  let formatted = content
-    .replace(/\[|\]|{|}/g, '') // 去掉方括号和花括号
-    .replace(/"/g, '') // 去掉引号
-    .replace(/,/g, '，') // 英文逗号替换为中文逗号
-    .replace(/\./g, '。') // 英文句号替换为中文句号
-    .replace(/:/g, '：') // 英文冒号替换为中文冒号
-    .replace(/;/g, '；') // 英文分号替换为中文分号
-  
-  // 去掉常见英文单词（保留中文和数字）
-  formatted = formatted.replace(/\b(strengths|weaknesses|risks|suggestions|point|evidence|target|from_section|severity|priority|target_section)\b/gi, '')
-  
-  // 将换行符转换为HTML换行
-  formatted = formatted.replace(/\n/g, '<br>')
-  
-  // 如果内容中有序号，确保它们是中文格式
-  formatted = formatted.replace(/(\d+)\./g, (match, p1) => {
-    return `${p1}、`
-  })
-  
-  // 去掉多余的空格
-  formatted = formatted.replace(/\s+/g, ' ')
-  
-  return formatted.trim()
-}
-
 // 查看详情（跳转到详情页面）
 const handleDetail = (project: Project) => {
-  router.push(`/project-detail/${project.id}`)
+  const id = project?.id
+  if (id == null) {
+    ElMessage.error('项目ID不存在，无法查看详情')
+    return
+  }
+  router.push({ name: 'project-detail', params: { id: String(id) } })
 }
 
 // 删除项目
@@ -711,9 +806,12 @@ const handleDelete = async (project: Project) => {
   })
 }
 
-// 组件挂载时获取数据
 onMounted(() => {
   fetchProjectList()
+})
+
+onUnmounted(() => {
+  clearAiReviewPoll()
 })
 </script>
 
@@ -772,116 +870,351 @@ onMounted(() => {
   background: white;
 }
 
-/* AI审核相关样式 */
-.ai-review-progress {
-  padding: 20px 0;
+.ai-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-/* 统一对话框标题字体 */
-:deep(.el-dialog__title) {
-  font-size: 18px;
+.ai-dialog-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, #1976d2 0%, #42a5f5 100%);
+  flex-shrink: 0;
+}
+
+.ai-dialog-icon.is-done {
+  background: linear-gradient(135deg, #2e7d32 0%, #66bb6a 100%);
+}
+
+.ai-dialog-title {
+  margin: 0;
+  font-size: 17px;
   font-weight: 600;
-  color: #303133;
+  color: #1f2a37;
+  line-height: 1.3;
 }
 
-/* 自定义步骤条颜色 */
-.ai-review-progress :deep(.el-step__head.is-wait) {
-  color: #909399;
-  border-color: #e4e7ed;
+.ai-dialog-sub {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.ai-review-progress {
+  padding: 8px 4px 4px;
+}
+
+.ai-review-progress :deep(.el-step__title) {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .ai-review-progress :deep(.el-step__head.is-wait .el-step__icon) {
-  background: #e4e7ed;
-  border-color: #dcdfe6;
-  color: #909399;
-}
-
-.ai-review-progress :deep(.el-step__head.is-wait .el-step__line) {
-  background: #e4e7ed;
-}
-
-/* 进行中的步骤 - 灰色 */
-.ai-review-progress :deep(.el-step__head.is-process) {
-  color: #909399;
-  border-color: #e4e7ed;
-}
-
-.ai-review-progress :deep(.el-step__head.is-process .el-step__icon) {
-  background: #e4e7ed;
-  border-color: #dcdfe6;
-  color: #909399;
-}
-
-.ai-review-progress :deep(.el-step__head.is-process .el-step__line) {
-  background: #e4e7ed;
-}
-
-/* 已完成的步骤 - 绿色 */
-.ai-review-progress :deep(.el-step__head.is-finish) {
-  color: #67c23a;
-  border-color: #67c23a;
-}
-
-.ai-review-progress :deep(.el-step__head.is-finish .el-step__icon) {
-  background: #67c23a;
-  border-color: #67c23a;
-  color: white;
-}
-
-.ai-review-progress :deep(.el-step__head.is-finish .el-step__line) {
-  background: #67c23a;
-}
-
-/* 步骤标题颜色和字体样式统一 */
-.ai-review-progress :deep(.el-step__title) {
-  font-size: 14px;
-  font-weight: 500;
+  background: #f2f4f7;
+  border-color: #e5e7eb;
+  color: #9aa3b2;
 }
 
 .ai-review-progress :deep(.el-step__title.is-wait) {
-  color: #909399;
+  color: #9aa3b2;
+}
+
+.ai-review-progress :deep(.el-step__head.is-process) {
+  color: #1976d2;
+  border-color: #1976d2;
+}
+
+.ai-review-progress :deep(.el-step__head.is-process .el-step__icon) {
+  background: #1976d2;
+  border-color: #1976d2;
+  color: #fff;
+  box-shadow: 0 0 0 6px rgba(25, 118, 210, 0.12);
 }
 
 .ai-review-progress :deep(.el-step__title.is-process) {
-  color: #909399;
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.ai-review-progress :deep(.el-step__head.is-finish) {
+  color: #2e7d32;
+  border-color: #2e7d32;
+}
+
+.ai-review-progress :deep(.el-step__head.is-finish .el-step__icon) {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+
+.ai-review-progress :deep(.el-step__head.is-finish .el-step__line) {
+  background: #a5d6a7;
 }
 
 .ai-review-progress :deep(.el-step__title.is-finish) {
-  color: #67c23a;
+  color: #2e7d32;
 }
 
-.progress-status {
-  margin-top: 30px;
-  padding: 0 20px;
+.progress-panel {
+  margin: 28px 12px 8px;
+  padding: 20px 22px 18px;
+  background: linear-gradient(180deg, #f7fbff 0%, #f4f7fb 100%);
+  border: 1px solid #e8eef6;
+  border-radius: 14px;
+}
+
+.progress-percent {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1976d2;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.progress-panel :deep(.el-progress-bar__outer) {
+  background: #e3ecf5;
 }
 
 .status-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   text-align: center;
-  margin-top: 15px;
-  color: #606266;
+  margin: 14px 0 0;
+  color: #5b6573;
   font-size: 14px;
 }
 
-.ai-review-result {
-  padding: 10px 0;
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1976d2;
+  animation: pulse-dot 1.2s ease-in-out infinite;
 }
 
-.result-section {
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.ai-review-result {
+  padding: 4px 2px 8px;
+}
+
+.result-hero {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 18px 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f4f9ff 0%, #eef6ff 48%, #f7fbff 100%);
+  border: 1px solid #dceaf8;
+}
+
+.score-ring {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(25, 118, 210, 0.12);
+  border: 4px solid #90caf9;
+}
+
+.score-ring.grade-a { border-color: #66bb6a; }
+.score-ring.grade-b { border-color: #ffa726; }
+.score-ring.grade-c { border-color: #42a5f5; }
+.score-ring.grade-d { border-color: #ef5350; }
+
+.score-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1f2a37;
+  line-height: 1;
+}
+
+.score-unit {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.hero-name {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2a37;
+}
+
+.hero-tags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-time {
+  font-size: 13px;
+  color: #8a94a6;
+}
+
+.hero-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #90a0b5;
+}
+
+.result-block {
   margin-top: 20px;
 }
 
-.result-section h4 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
+.block-title {
+  font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: #334155;
+  margin-bottom: 10px;
 }
 
-.summary-text {
-  padding: 15px;
-  background: #f5f7fa;
-  border-radius: 4px;
+.summary-card {
+  padding: 16px 18px;
+  background: #f8fafc;
+  border-radius: 12px;
   line-height: 1.8;
-  color: #606266;
+  color: #475569;
+  font-size: 14px;
+  border: 1px solid #eef2f6;
+}
+
+.empty-hint {
+  color: #94a3b8;
+  font-size: 13px;
+  padding: 12px 0;
+}
+
+.section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.section-card {
+  border: 1px solid #eef2f6;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #f8fbff;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.section-index {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #1976d2;
+  color: #fff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.section-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2a37;
+}
+
+.section-score {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+}
+
+.section-score.is-high { color: #2e7d32; background: #e8f5e9; }
+.section-score.is-mid { color: #ef6c00; background: #fff3e0; }
+.section-score.is-low { color: #c62828; background: #ffebee; }
+
+.section-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+
+.opinion-col {
+  padding: 12px 14px 14px;
+  min-height: 88px;
+}
+
+.opinion-col + .opinion-col {
+  border-left: 1px solid #f1f5f9;
+}
+
+.opinion-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.opinion-col.is-good .opinion-label { color: #2e7d32; }
+.opinion-col.is-bad .opinion-label { color: #c62828; }
+.opinion-col.is-tip .opinion-label { color: #1565c0; }
+
+.opinion-col ul {
+  margin: 0;
+  padding-left: 16px;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.opinion-col li.is-empty {
+  list-style: none;
+  margin-left: -16px;
+  color: #cbd5e1;
+}
+
+</style>
+
+<style>
+.ai-review-dialog {
+  border-radius: 16px !important;
+  overflow: hidden;
+}
+.ai-review-dialog .el-dialog__header {
+  padding: 18px 20px 8px !important;
+  margin-right: 0 !important;
+}
+.ai-review-dialog .el-dialog__body {
+  padding: 8px 20px 12px !important;
+}
+.ai-review-dialog .el-dialog__footer {
+  padding: 8px 20px 16px !important;
 }
 </style>

@@ -60,7 +60,7 @@
                create_time, update_time, end_time
         FROM ai_review_task
         WHERE project_id = #{projectId}
-          AND status IN ('PENDING', 'PARSING', 'REVIEWING', 'SUMMARIZING')
+          AND status IN ('PENDING', 'PARSING', 'CLEANING', 'SPLITTING', 'REVIEWING', 'SUMMARIZING')
         ORDER BY create_time DESC
         LIMIT 1
     </select>

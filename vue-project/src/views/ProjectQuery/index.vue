@@ -284,7 +284,12 @@ const getProjectTypeTagType = (projectType?: string) => {
 
 // 查看详情
 const handleDetail = (project: Project) => {
-  router.push(`/project-detail/${project.id}`)
+  const id = project?.id
+  if (id == null) {
+    ElMessage.error('项目ID不存在，无法查看详情')
+    return
+  }
+  router.push({ name: 'project-detail', params: { id: String(id) } })
 }
 
 // 删除项目

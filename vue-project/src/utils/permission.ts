@@ -188,7 +188,7 @@ export const hasRoutePermission = (role: string | undefined, routeName: string):
   if (!role) return false
   
   // 首页和登录页所有角色都可以访问
-  if (routeName === 'index' || routeName === 'login') {
+  if (routeName === 'index' || routeName === 'login' || routeName === 'project-detail') {
     return true
   }
   

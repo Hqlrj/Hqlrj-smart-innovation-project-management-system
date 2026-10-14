@@ -69,24 +69,42 @@ public class ProjectServiceImpl implements ProjectService {
     public Project getById(Integer id) {
         Project project = projectMapper.getById(id);
         if (project != null) {
-            // 查询项目成员列表
-            List<ProjectMember> members = projectMemberMapper.listByProjectId(id);
-            project.setMembers(members);
-            
-            // 查询指导老师列表
-            List<ProjectAdvisor> advisors = projectAdvisorMapper.listByProjectId(id);
-            project.setAdvisors(advisors);
-            
-            // 查询获奖记录列表（只显示已审批通过的记录）
-            List<Award> allAwards = awardMapper.listByProjectId(id);
-            // 过滤出状态为"approved"的记录
-            List<Award> approvedAwards = allAwards.stream()
-                    .filter(award -> "approved".equals(award.getStatus()))
-                    .collect(Collectors.toList());
-            project.setAwards(approvedAwards);
-            
-            // 查询计划书列表
-            List<ProjectPlan> plans = projectPlanMapper.listByProjectId(id);
+            try {
+                List<ProjectMember> members = projectMemberMapper.listByProjectId(id);
+                project.setMembers(members != null ? members : List.of());
+            } catch (Exception e) {
+                project.setMembers(List.of());
+            }
+
+            try {
+                List<ProjectAdvisor> advisors = projectAdvisorMapper.listByProjectId(id);
+                project.setAdvisors(advisors != null ? advisors : List.of());
+            } catch (Exception e) {
+                project.setAdvisors(List.of());
+            }
+
+            try {
+                List<Award> allAwards = awardMapper.listByProjectId(id);
+                if (allAwards == null) {
+                    allAwards = List.of();
+                }
+                List<Award> approvedAwards = allAwards.stream()
+                        .filter(award -> "approved".equals(award.getStatus()))
+                        .collect(Collectors.toList());
+                project.setAwards(approvedAwards);
+            } catch (Exception e) {
+                project.setAwards(List.of());
+            }
+
+            List<ProjectPlan> plans = List.of();
+            try {
+                List<ProjectPlan> loaded = projectPlanMapper.listByProjectId(id);
+                if (loaded != null) {
+                    plans = loaded;
+                }
+            } catch (Exception e) {
+                plans = List.of();
+            }
             
             // 兼容旧数据：如果 plans 为空，但项目表中已经有 planFilePath / planFileName，
             // 则根据这两个字段构造一个虚拟的计划书记录，保证前端“计划书”标签页能看到已上传的文件
