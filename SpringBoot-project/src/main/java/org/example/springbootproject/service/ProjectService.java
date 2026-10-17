@@ -3,6 +3,8 @@ package org.example.springbootproject.service;
 import org.example.springbootproject.pojo.PageBean;
 import org.example.springbootproject.pojo.Project;
 
+import java.util.List;
+
 /**
  * 项目服务接口
  * 定义项目相关的业务逻辑方法
@@ -19,7 +21,12 @@ public interface ProjectService {
      * @param applicantId 申请人ID（可选）
      * @return 分页结果
      */
-    PageBean<Project> list(Integer page, Integer pageSize, String projectName, String projectType, String status, String projectSpace, Integer applicantId);
+    PageBean<Project> list(Integer page, Integer pageSize, String projectName, String projectType, String status, String projectSpace, Integer applicantId, String applicantCollege);
+
+    /**
+     * 按学号查询申报人或成员关联的项目（供 AI 工具使用）
+     */
+    List<Project> listByStudentId(String studentId, String applicantCollege, Integer limit);
 
     /**
      * 根据ID查询项目（包含成员列表）

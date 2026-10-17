@@ -151,9 +151,6 @@
             </div>
           </div>
 
-          <!-- AI智能助手：除申请人外可见 -->
-          <AiChatWidget v-if="canAccessAiChat" />
-
           <!-- 项目空间功能已注释 -->
           <!-- <div v-if="canAccessMenu('项目空间')" class="nav-section">
             <div class="nav-section-header" @click="toggleSection('space')">
@@ -190,8 +187,8 @@
 
       <!-- 右侧容器（包含顶部和主内容） -->
       <el-container>
-        <!-- 顶部导航栏 -->
-        <el-header class="header-container">
+        <!-- 顶部导航栏：仅首页显示 -->
+        <el-header v-if="isHomePage" class="header-container">
           <!-- 通知铃铛（左侧） -->
           <div class="notification-bell" @click="showNotificationPanel = true">
             <el-badge :value="unreadCount" :hidden="unreadCount === 0" :max="99">
@@ -282,13 +279,14 @@
         </el-dialog>
 
         <!-- 主内容区域 -->
-        <el-main class="main-content">
+        <el-main class="main-content" :class="{ 'main-content--flush': !isHomePage }">
           <router-view />
         </el-main>
       </el-container>
     </el-container>
     
-    <!-- AI聊天对话框：除申请人外可见 -->
+    <!-- 右侧悬浮 AI 助手：除申请人外可见 -->
+    <AiChatWidget v-if="canAccessAiChat" />
     <AiChatDialog v-if="canAccessAiChat" />
     
     <!-- 个人中心弹窗 -->
@@ -543,6 +541,7 @@ import AiChatDialog from '@/components/AiChatDialog.vue'
 const router = useRouter()
 const route = useRoute()
 const loginStore = useLoginStore()
+const isHomePage = computed(() => route.path === '/index' || route.path === '/')
 
 // 获取当前用户角色
 const userRole = computed(() => loginStore.userInfo?.role || '')
@@ -698,7 +697,7 @@ const handleNotificationClick = async (item: Notification) => {
   } else if (item.type === 'award_approve' || item.type === 'award_reject') {
     router.push('/project-awards')
   } else if (item.type === 'notice_publish') {
-    router.push('/notice-list')
+    router.push({ path: '/notice-list', query: item.relatedId ? { id: String(item.relatedId) } : {} })
   }
 }
 
@@ -1563,6 +1562,11 @@ const handleDeleteApiKey = async () => {
   background: white;
   padding: 0;
   overflow-y: auto;
+}
+
+.main-content--flush {
+  padding: 0 !important;
+  margin: 0;
 }
 
 .sidebar-nav {

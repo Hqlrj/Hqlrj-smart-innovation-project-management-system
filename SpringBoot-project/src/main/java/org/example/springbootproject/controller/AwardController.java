@@ -5,9 +5,12 @@ import org.example.springbootproject.pojo.Award;
 import org.example.springbootproject.pojo.PageBean;
 import org.example.springbootproject.pojo.Project;
 import org.example.springbootproject.pojo.Result;
+import org.example.springbootproject.pojo.User;
 import org.example.springbootproject.service.AwardService;
 import org.example.springbootproject.service.NotificationService;
 import org.example.springbootproject.service.ProjectService;
+import org.example.springbootproject.service.UserService;
+import org.example.springbootproject.util.CollegeScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,6 +40,9 @@ public class AwardController {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private UserService userService;
+
     // 文件上传路径（获奖证明图片）
     private static final String UPLOAD_DIR = "uploads/award-certificates/";
 
@@ -50,9 +56,12 @@ public class AwardController {
             String projectName, String competitionName, String competitionLevel, String awardLevel,
             @RequestParam(required = false) Integer applicantId,
             HttpServletRequest request) {
-        // 移除权限检查：所有用户都可以查看所有获奖记录
+        Integer userId = (Integer) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+        User user = userId == null ? null : userService.getById(userId);
+        String college = CollegeScope.collegeFilter(user, role);
         PageBean<Award> pageBean = awardService.list(page, pageSize, projectName, competitionName, 
-                                                      competitionLevel, awardLevel, applicantId);
+                                                      competitionLevel, awardLevel, applicantId, college);
         return Result.success(pageBean);
     }
 

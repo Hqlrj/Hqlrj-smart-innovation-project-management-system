@@ -18,7 +18,15 @@ public interface ProjectMapper {
                       @Param("projectType") String projectType,
                       @Param("status") String status,
                       @Param("projectSpace") String projectSpace,
-                      @Param("applicantId") Integer applicantId);
+                      @Param("applicantId") Integer applicantId,
+                      @Param("applicantCollege") String applicantCollege);
+
+    /**
+     * 按学号查询申报人或成员关联的项目
+     */
+    List<Project> listByStudentId(@Param("studentId") String studentId,
+                                  @Param("applicantCollege") String applicantCollege,
+                                  @Param("limit") Integer limit);
 
     /**
      * 根据ID查询项目

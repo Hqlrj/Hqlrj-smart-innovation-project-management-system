@@ -13,8 +13,10 @@ import org.example.springbootproject.pojo.Project;
 import org.example.springbootproject.pojo.ProjectMember;
 import org.example.springbootproject.pojo.ProjectAdvisor;
 import org.example.springbootproject.pojo.ProjectPlan;
+import org.example.springbootproject.service.DocumentIndexService;
 import org.example.springbootproject.service.ProjectService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,22 +46,32 @@ public class ProjectServiceImpl implements ProjectService {
     @Autowired
     private ProjectPlanMapper projectPlanMapper;
 
+    @Autowired
+    @Lazy
+    private DocumentIndexService documentIndexService;
+
     /**
      * 分页查询项目列表
      */
     @Override
-    public PageBean<Project> list(Integer page, Integer pageSize, String projectName, String projectType, String status, String projectSpace, Integer applicantId) {
+    public PageBean<Project> list(Integer page, Integer pageSize, String projectName, String projectType, String status, String projectSpace, Integer applicantId, String applicantCollege) {
         // 设置分页参数
         PageHelper.startPage(page, pageSize);
 
         // 执行查询
-        List<Project> projectList = projectMapper.list(projectName, projectType, status, projectSpace, applicantId);
+        List<Project> projectList = projectMapper.list(projectName, projectType, status, projectSpace, applicantId, applicantCollege);
 
         // 获取分页信息
         Page<Project> p = (Page<Project>) projectList;
 
         // 封装分页结果
         return PageBean.of(p.getTotal(), p.getResult());
+    }
+
+    @Override
+    public List<Project> listByStudentId(String studentId, String applicantCollege, Integer limit) {
+        int size = (limit == null || limit <= 0) ? 20 : Math.min(limit, 20);
+        return projectMapper.listByStudentId(studentId, applicantCollege, size);
     }
 
     /**
@@ -167,6 +179,7 @@ public class ProjectServiceImpl implements ProjectService {
                 projectAdvisorMapper.insert(advisor);
             }
         }
+        persistPlansAndIndex(project);
     }
 
     /**
@@ -200,6 +213,50 @@ public class ProjectServiceImpl implements ProjectService {
             for (ProjectAdvisor advisor : project.getAdvisors()) {
                 advisor.setProjectId(project.getId());
                 projectAdvisorMapper.insert(advisor);
+            }
+        }
+        persistPlansAndIndex(project);
+    }
+
+    private void persistPlansAndIndex(Project project) {
+        if (project.getId() == null) {
+            return;
+        }
+        List<ProjectPlan> plans = project.getPlans();
+        if ((plans == null || plans.isEmpty())
+                && project.getPlanFilePath() != null && !project.getPlanFilePath().isBlank()) {
+            ProjectPlan fromProject = new ProjectPlan();
+            fromProject.setProjectId(project.getId());
+            fromProject.setFilePath(project.getPlanFilePath());
+            fromProject.setFileName(project.getPlanFileName());
+            fromProject.setCreateTime(LocalDateTime.now());
+            plans = List.of(fromProject);
+        }
+        if (plans == null) {
+            return;
+        }
+        List<ProjectPlan> existing = projectPlanMapper.listByProjectId(project.getId());
+        for (ProjectPlan plan : plans) {
+            if (plan.getFilePath() == null || plan.getFilePath().isBlank()) {
+                continue;
+            }
+            plan.setProjectId(project.getId());
+            boolean already = existing != null && existing.stream()
+                    .anyMatch(p -> plan.getFilePath().equals(p.getFilePath()));
+            if (!already) {
+                if (plan.getCreateTime() == null) {
+                    plan.setCreateTime(LocalDateTime.now());
+                }
+                projectPlanMapper.insert(plan);
+            } else if (plan.getId() == null) {
+                plan.setId(existing.stream()
+                        .filter(p -> plan.getFilePath().equals(p.getFilePath()))
+                        .findFirst()
+                        .map(ProjectPlan::getId)
+                        .orElse(null));
+            }
+            if (plan.getId() != null) {
+                documentIndexService.indexPlan(project.getId(), plan.getId(), plan.getFilePath(), plan.getFileName());
             }
         }
     }

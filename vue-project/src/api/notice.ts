@@ -12,6 +12,7 @@ export interface Notice {
   publisherName?: string
   publisherRole?: string
   isTop?: number
+  isRead?: number
   status?: string
   createTime?: string
   updateTime?: string
@@ -20,6 +21,7 @@ export interface Notice {
 // 查询参数
 export interface NoticeQueryParams {
   title?: string
+  readStatus?: 'unread' | 'read' | 'all'
   page?: number
   pageSize?: number
 }

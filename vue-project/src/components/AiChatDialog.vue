@@ -1,608 +1,642 @@
 <template>
-  <el-dialog
-    v-model="isVisible"
-    width="700px"
-    :close-on-click-modal="false"
-    class="ai-chat-dialog"
-    @close="handleClose"
-    :show-close="false"
-  >
-    <template #header>
-      <div class="dialog-header">
-        <div class="header-left">
-          <div class="ai-avatar">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-              <path d="M12 6v6l4 2"/>
-            </svg>
+  <Teleport to="body">
+    <transition name="ai-panel">
+      <aside
+        v-if="isVisible"
+        class="ai-panel"
+        role="dialog"
+        aria-label="AI 智能助手"
+        :style="panelStyle"
+      >
+        <header class="panel-header">
+          <div class="brand">
+            <div class="brand-avatar">
+              <svg viewBox="0 0 64 64" width="28" height="28">
+                <circle cx="32" cy="32" r="30" fill="#4f6ef7" />
+                <rect x="18" y="20" width="28" height="22" rx="11" fill="#fff" />
+                <circle cx="26" cy="31" r="3" fill="#2b3a8f" />
+                <circle cx="38" cy="31" r="3" fill="#2b3a8f" />
+                <path d="M26 38c2.2 2.4 9.8 2.4 12 0" stroke="#5b6cff" stroke-width="2" fill="none" stroke-linecap="round" />
+              </svg>
+            </div>
+            <div>
+              <h3>AI 智能助手</h3>
+              <p>{{ hasApiKey ? 'DeepSeek · 在线' : '待配置 API Key' }}</p>
+            </div>
           </div>
-          <div class="header-info">
-            <h3>AI智能助手</h3>
-            <p>随时为您解答项目审核相关问题</p>
+          <div class="header-actions">
+            <button type="button" class="icon-btn" title="新对话" @click="resetConversation">
+              <el-icon><RefreshRight /></el-icon>
+            </button>
+            <button type="button" class="icon-btn" title="关闭" @click="handleClose">
+              <el-icon><Close /></el-icon>
+            </button>
           </div>
-        </div>
-        <el-icon class="close-icon" @click="handleClose">
-          <Close />
-        </el-icon>
-      </div>
-    </template>
+        </header>
 
-    <div class="chat-content">
-      <div class="chat-messages" ref="messagesContainer">
-        <div 
-          v-for="(message, index) in messages" 
-          :key="index"
-          class="message"
-          :class="message.role"
-        >
-          <div class="message-avatar">
-            <div v-if="message.role === 'user'" class="user-avatar">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                <circle cx="12" cy="7" r="4"/>
+        <div class="chat-body" ref="messagesContainer">
+          <div v-if="showWelcome" class="welcome">
+            <div class="welcome-avatar">
+              <svg viewBox="0 0 64 64" width="56" height="56">
+                <circle cx="32" cy="32" r="30" fill="#4f6ef7" />
+                <rect x="18" y="20" width="28" height="22" rx="11" fill="#fff" />
+                <circle cx="26" cy="31" r="3.2" fill="#2b3a8f" />
+                <circle cx="38" cy="31" r="3.2" fill="#2b3a8f" />
+                <path d="M26 38c2.2 2.4 9.8 2.4 12 0" stroke="#5b6cff" stroke-width="2" fill="none" stroke-linecap="round" />
               </svg>
             </div>
-            <div v-else class="ai-avatar-mini">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
+            <h2>你好，我是项目智能助手</h2>
+            <p>可以帮你解答申报、评审、计划书撰写等问题。</p>
+            <div class="suggest-list">
+              <button
+                v-for="item in suggestions"
+                :key="item"
+                type="button"
+                class="suggest-chip"
+                @click="useSuggestion(item)"
+              >
+                {{ item }}
+              </button>
             </div>
           </div>
-          <div class="message-content">
-            <div class="message-header">
-              <span class="message-name">{{ message.role === 'user' ? '我' : 'AI助手' }}</span>
-              <span class="message-time">{{ formatTime(message.time) }}</span>
-            </div>
-            <div class="message-text">{{ message.content }}</div>
-          </div>
-        </div>
-        
-        <!-- 加载中 -->
-        <div class="message assistant loading" v-if="isLoading">
-          <div class="message-avatar">
-            <div class="ai-avatar-mini">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
-                <path d="M12 6v6l4 2"/>
-              </svg>
-            </div>
-          </div>
-          <div class="message-content">
-            <div class="message-header">
-              <span class="message-name">AI助手</span>
-            </div>
-            <div class="message-text">
-              <div class="typing-indicator">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
 
-      <div class="chat-input">
-        <div class="input-wrapper">
-          <el-input
-            v-model="inputMessage"
-            type="textarea"
-            :rows="2"
-            :placeholder="hasApiKey ? '输入您的问题...' : '请先配置API Key后再使用'"
-            @keydown.enter="sendMessage"
-            :disabled="isLoading"
-            class="chat-textarea"
-          />
-          <el-button 
-            @click="sendMessage" 
-            :disabled="isLoading || !inputMessage.trim()"
-            type="primary"
-            class="send-btn"
-            size="large"
+          <div
+            v-for="(message, index) in displayMessages"
+            :key="index"
+            class="row"
+            :class="message.role"
           >
-            <el-icon><Promotion /></el-icon>
-            发送
-          </el-button>
+            <div v-if="message.role === 'assistant'" class="row-avatar">
+              <svg viewBox="0 0 64 64" width="28" height="28">
+                <circle cx="32" cy="32" r="30" fill="#4f6ef7" />
+                <rect x="18" y="20" width="28" height="22" rx="11" fill="#fff" />
+                <circle cx="26" cy="31" r="3" fill="#2b3a8f" />
+                <circle cx="38" cy="31" r="3" fill="#2b3a8f" />
+              </svg>
+            </div>
+            <div
+              class="bubble"
+              :class="{ streaming: isLoading && index === messages.length - 1 && message.role === 'assistant' }"
+            >
+              <div v-if="!message.content && isLoading && index === messages.length - 1" class="thinking">
+                <span /><span /><span />
+              </div>
+              <template v-else>{{ message.content }}</template>
+            </div>
+          </div>
         </div>
-        <div class="input-footer">
-          <span class="input-hint" v-if="hasApiKey">按 Enter 快速发送</span>
-          <span class="input-hint warning" v-else>
-            <el-icon><Warning /></el-icon>
-            请先配置API Key
-          </span>
-        </div>
-      </div>
-    </div>
-  </el-dialog>
+
+        <footer class="composer">
+          <div v-if="!hasApiKey" class="key-tip">
+            请先点击右上角设置图标配置 DeepSeek API Key
+          </div>
+          <div class="composer-box">
+            <textarea
+              v-model="inputMessage"
+              rows="1"
+              :placeholder="hasApiKey ? '输入问题，Enter 发送，Shift+Enter 换行' : '请先配置 API Key'"
+              :disabled="isLoading || !hasApiKey"
+              @keydown="handleKeydown"
+              @input="autoResize"
+              ref="textareaRef"
+            />
+            <button
+              type="button"
+              class="send-btn"
+              :disabled="isLoading || !inputMessage.trim() || !hasApiKey"
+              @click="sendMessage"
+            >
+              发送
+            </button>
+          </div>
+        </footer>
+      </aside>
+    </transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Close, Promotion, Warning } from '@element-plus/icons-vue'
+import { Close, RefreshRight } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
-// 组件状态
-const isVisible = ref(false)
-const inputMessage = ref('')
-const isLoading = ref(false)
-const conversationId = ref('')
-const messagesContainer = ref<HTMLElement>()
-
-// 消息历史
 interface Message {
   role: 'user' | 'assistant'
   content: string
   time: Date
 }
 
-const messages = ref<Message[]>([
-  {
-    role: 'assistant',
-    content: '您好！我是AI智能助手，可以帮助您处理项目审核相关问题。点击顶部设置图标配置API Key即可开始使用。',
-    time: new Date()
-  }
-])
+const suggestions = [
+  '创新创业项目怎么申报？',
+  '计划书一般包含哪些章节？',
+  '评审流程是怎样的？'
+]
 
-// 检查用户是否配置了API Key
+const isVisible = ref(false)
+const inputMessage = ref('')
+const isLoading = ref(false)
+const conversationId = ref('')
 const hasApiKey = ref(false)
+const messagesContainer = ref<HTMLElement>()
+const textareaRef = ref<HTMLTextAreaElement>()
+const messages = ref<Message[]>([])
+const mascot = ref({ x: 0, y: 0, size: 64 })
 
-// 监听来自侧边栏的事件
+const panelStyle = computed(() => {
+  const margin = 8
+  const gap = 12
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const pw = Math.min(400, vw - margin * 2)
+  const ph = Math.min(680, vh - margin * 2)
+  const { x, y, size } = mascot.value
+
+  let left = x + size - pw
+  let top = y - gap - ph
+  if (top < margin) {
+    top = y + size + gap
+  }
+  if (top + ph > vh - margin) {
+    top = Math.max(margin, vh - ph - margin)
+  }
+  left = Math.min(Math.max(margin, left), vw - pw - margin)
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${pw}px`,
+    height: `${ph}px`
+  }
+})
+
+const displayMessages = computed(() => messages.value)
+const showWelcome = computed(() => messages.value.length === 0 && !isLoading.value)
+
 const handleOpenChat = async () => {
   isVisible.value = true
-  
-  // 检查用户是否配置了API Key
   try {
     const response = await request.get('/users/api-key')
-    hasApiKey.value = response.hasKey === 'true'
-    
-    if (!hasApiKey.value) {
-      // 如果没有配置API Key，更新提示消息
-      messages.value = [{
-        role: 'assistant',
-        content: '您好！我是AI智能助手，可以帮助您处理项目审核相关问题。请问您有什么需要帮助的吗？。',
-        time: new Date()
-      }]
-    }
-  } catch (error) {
-    console.error('检查API Key失败:', error)
+    hasApiKey.value = response.hasKey === 'true' || response.hasKey === true
+  } catch {
     hasApiKey.value = false
   }
-  
-  nextTick(() => {
-    scrollToBottom()
-  })
+  await nextTick()
+  scrollToBottom()
+  textareaRef.value?.focus()
 }
 
-// 监听关闭事件
-const handleClose = () => {
+const hidePanel = () => {
   isVisible.value = false
 }
 
-// 发送消息
-const sendMessage = async () => {
-  const message = inputMessage.value.trim()
-  if (!message || isLoading.value) return
+const handleClose = () => {
+  hidePanel()
+  window.dispatchEvent(new CustomEvent('closeAiChat'))
+}
 
-  // 检查是否配置了API Key
-  if (!hasApiKey.value) {
-    ElMessage.warning('请先点击顶部设置图标配置您的DeepSeek API Key')
-    return
-  }
-
-  console.log('开始发送AI聊天消息:', message)
-  console.log('当前对话ID:', conversationId.value)
-
-  // 添加用户消息
-  messages.value.push({
-    role: 'user',
-    content: message,
-    time: new Date()
-  })
-
+const resetConversation = () => {
+  messages.value = []
+  conversationId.value = ''
   inputMessage.value = ''
-  isLoading.value = true
+}
 
-  // 滚动到底部
-  nextTick(() => {
-    scrollToBottom()
-  })
+const useSuggestion = (text: string) => {
+  inputMessage.value = text
+  sendMessage()
+}
 
-  try {
-    console.log('发送请求到: /projects/ai-chat')
-    const response = await request.post('/projects/ai-chat', {
-      message: message,
-      conversationId: conversationId.value
-    })
-    console.log('AI聊天响应:', response)
-
-    // 更新对话ID
-    if (response.conversationId) {
-      conversationId.value = response.conversationId
-    }
-
-    // 添加AI回复
-    messages.value.push({
-      role: 'assistant',
-      content: response.reply,
-      time: new Date()
-    })
-
-  } catch (error: any) {
-    console.error('AI聊天错误:', error)
-    console.error('错误详情:', {
-      message: error.message,
-      code: error.code,
-      status: error.response?.status,
-      data: error.response?.data
-    })
-    
-    // 检查错误信息
-    let errorMessage = '抱歉，我暂时无法回答您的问题，请稍后再试。'
-    
-    if (error.message) {
-      if (error.message.includes('API Key') || error.message.includes('配置')) {
-        errorMessage = '请先点击顶部设置图标配置您的DeepSeek API Key，配置后即可使用AI聊天功能。'
-      } else if (error.message.includes('404')) {
-        errorMessage = 'AI服务接口不存在，请联系管理员检查后端配置。'
-      } else if (error.message.includes('500')) {
-        errorMessage = '服务器错误，请稍后再试。'
-      }
-    }
-    
-    // 检查是否是404错误
-    if (error.response && error.response.status === 404) {
-      errorMessage = 'AI服务接口不存在(404)，请联系管理员检查后端配置。'
-    }
-    
-    messages.value.push({
-      role: 'assistant',
-      content: errorMessage,
-      time: new Date()
-    })
-  } finally {
-    isLoading.value = false
-    nextTick(() => {
-      scrollToBottom()
-    })
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    sendMessage()
   }
 }
 
-// 滚动到底部
+const autoResize = () => {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+}
+
+const sendMessage = async () => {
+  const message = inputMessage.value.trim()
+  if (!message || isLoading.value) return
+  if (!hasApiKey.value) {
+    ElMessage.warning('请先点击顶部设置图标配置您的 DeepSeek API Key')
+    return
+  }
+
+  messages.value.push({ role: 'user', content: message, time: new Date() })
+  messages.value.push({ role: 'assistant', content: '', time: new Date() })
+  inputMessage.value = ''
+  await nextTick()
+  if (textareaRef.value) textareaRef.value.style.height = 'auto'
+  isLoading.value = true
+  scrollToBottom()
+
+  const assistantIndex = messages.value.length - 1
+  const appendDelta = (text: string) => {
+    const current = messages.value[assistantIndex]
+    if (!current) return
+    messages.value[assistantIndex] = {
+      ...current,
+      content: current.content + text
+    }
+    scrollToBottom()
+  }
+
+  try {
+    const token = sessionStorage.getItem('token') || ''
+    const baseURL = (request.defaults.baseURL || 'http://localhost:8080').replace(/\/$/, '')
+    const response = await fetch(`${baseURL}/projects/ai-chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify({
+        message,
+        conversationId: conversationId.value
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(response.status === 401 ? '登录已过期，请重新登录' : `请求失败(${response.status})`)
+    }
+    if (!response.body) {
+      throw new Error('浏览器不支持流式读取')
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+    let sawContent = false
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop() || ''
+      for (const part of parts) {
+        const line = part.split('\n').find((item) => item.startsWith('data:'))
+        if (!line) continue
+        const payload = line.slice(5).trim()
+        if (!payload) continue
+        let event: { type?: string; content?: string; conversationId?: string; message?: string }
+        try {
+          event = JSON.parse(payload)
+        } catch {
+          continue
+        }
+        if (event.type === 'delta' && event.content) {
+          sawContent = true
+          appendDelta(event.content)
+        } else if (event.type === 'done') {
+          if (event.conversationId) {
+            conversationId.value = event.conversationId
+          }
+        } else if (event.type === 'error') {
+          throw new Error(event.message || 'AI聊天失败')
+        }
+      }
+    }
+
+    if (!sawContent && !messages.value[assistantIndex]?.content) {
+      appendDelta('暂时没有生成回复，请再试一次。')
+    }
+  } catch (error: any) {
+    let errorMessage = '抱歉，我暂时无法回答，请稍后再试。'
+    const raw = error?.message || ''
+    if (raw.includes('API Key') || raw.includes('配置')) {
+      errorMessage = '请先点击右上角设置图标配置 DeepSeek API Key。'
+    } else if (raw) {
+      errorMessage = raw
+    }
+    const current = messages.value[assistantIndex]
+    if (current && !current.content) {
+      current.content = errorMessage
+    } else {
+      messages.value.push({ role: 'assistant', content: errorMessage, time: new Date() })
+    }
+  } finally {
+    isLoading.value = false
+    await nextTick()
+    scrollToBottom()
+  }
+}
+
 const scrollToBottom = () => {
   if (messagesContainer.value) {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 }
 
-// 格式化时间
-const formatTime = (time: Date) => {
-  const now = new Date()
-  const diff = now.getTime() - time.getTime()
-  
-  if (diff < 60000) {
-    return '刚刚'
-  } else if (diff < 3600000) {
-    return `${Math.floor(diff / 60000)}分钟前`
-  } else if (diff < 86400000) {
-    return `${Math.floor(diff / 3600000)}小时前`
-  } else {
-    return time.toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    })
+const handleMascotMove = (e: Event) => {
+  const detail = (e as CustomEvent).detail
+  if (!detail) return
+  mascot.value = {
+    x: Number(detail.x) || 0,
+    y: Number(detail.y) || 0,
+    size: Number(detail.size) || 64
   }
 }
 
-// 组件挂载时监听事件
 onMounted(() => {
   window.addEventListener('openAiChat', handleOpenChat)
+  window.addEventListener('closeAiChat', hidePanel)
+  window.addEventListener('aiMascotMove', handleMascotMove)
 })
 
-// 组件卸载时移除事件监听
 onUnmounted(() => {
   window.removeEventListener('openAiChat', handleOpenChat)
+  window.removeEventListener('closeAiChat', hidePanel)
+  window.removeEventListener('aiMascotMove', handleMascotMove)
 })
 </script>
 
 <style scoped>
-/* 聊天弹窗样式 */
-:deep(.ai-chat-dialog .el-dialog) {
+.ai-panel {
+  position: fixed;
+  z-index: 2990;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #e7eaf0;
   border-radius: 20px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.16);
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
 }
 
-:deep(.ai-chat-dialog .el-dialog__header) {
-  padding: 0;
-  margin: 0;
-  border-bottom: none;
-}
-
-:deep(.ai-chat-dialog .el-dialog__body) {
-  padding: 0;
+.panel-header {
   display: flex;
-  flex-direction: column;
-}
-
-.dialog-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px 24px;
-  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid #eef1f6;
+  background: #fbfcfe;
 }
 
-.header-left {
+.brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.ai-avatar {
-  width: 48px;
-  height: 48px;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  backdrop-filter: blur(10px);
-}
-
-.header-info h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: white;
-}
-
-.header-info p {
-  margin: 4px 0 0 0;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.close-icon {
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  padding: 8px;
-  border-radius: 8px;
-}
-
-.close-icon:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.chat-content {
-  display: flex;
-  flex-direction: column;
-  height: 500px;
-}
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
-  background: #f8f9fa;
-}
-
-.message {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.message.user {
-  flex-direction: row-reverse;
-}
-
-.message-avatar {
-  flex-shrink: 0;
-}
-
-.user-avatar,
-.ai-avatar-mini {
+.brand-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 50%;
+  overflow: hidden;
 }
 
-.user-avatar {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
+.brand h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: #1f2937;
 }
 
-.ai-avatar-mini {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.message-content {
-  max-width: 70%;
-}
-
-.message.user .message-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.message.assistant .message-content {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.message-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.message-name {
+.brand p {
+  margin: 2px 0 0;
   font-size: 12px;
-  font-weight: 500;
-  color: #666;
+  color: #6b7280;
 }
 
-.message-time {
-  font-size: 11px;
-  color: #999;
+.header-actions {
+  display: flex;
+  gap: 6px;
 }
 
-.message-text {
-  padding: 12px 16px;
+.icon-btn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: #eef2ff;
+  color: #4f6ef7;
+}
+
+.chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px 12px;
+  background: #fff;
+}
+
+.welcome {
+  text-align: center;
+  padding: 36px 12px 12px;
+}
+
+.welcome-avatar {
+  margin-bottom: 12px;
+}
+
+.welcome h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.welcome p {
+  margin: 8px 0 18px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.suggest-chip {
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  color: #374151;
   border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.6;
-  word-wrap: break-word;
-  white-space: pre-wrap;
-  color: #333;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
 }
 
-.message.user .message-text {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
+.suggest-chip:hover {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4338ca;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.row.user {
+  justify-content: flex-end;
+}
+
+.row-avatar {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.row.user .bubble {
+  background: #4f6ef7;
+  color: #fff;
   border-bottom-right-radius: 4px;
 }
 
-.message.assistant .message-text {
-  background: white;
-  border: 1px solid #e8e8e8;
+.row.assistant .bubble {
+  background: #f3f4f6;
+  color: #111827;
   border-bottom-left-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* 打字指示器 */
-.typing-indicator {
+.row.assistant .bubble.streaming::after {
+  content: '▍';
+  margin-left: 2px;
+  color: #4f6ef7;
+  animation: caret 0.9s steps(1) infinite;
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.thinking {
   display: flex;
-  gap: 4px;
   align-items: center;
+  gap: 5px;
+  min-width: 52px;
 }
 
-.typing-indicator span {
-  width: 8px;
-  height: 8px;
-  background: #667eea;
+.thinking span {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  animation: typing 1.4s infinite ease-in-out;
+  background: #9ca3af;
+  animation: blink 1.2s infinite ease-in-out;
 }
 
-.typing-indicator span:nth-child(1) {
-  animation-delay: 0s;
+.thinking span:nth-child(2) {
+  animation-delay: 0.15s;
 }
 
-.typing-indicator span:nth-child(2) {
-  animation-delay: 0.2s;
+.thinking span:nth-child(3) {
+  animation-delay: 0.3s;
 }
 
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes typing {
-  0%, 60%, 100% {
-    transform: translateY(0);
+@keyframes blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
   }
-  30% {
-    transform: translateY(-8px);
+  40% {
+    opacity: 1;
   }
 }
 
-.chat-input {
-  padding: 20px 24px;
-  border-top: 1px solid #f0f0f0;
-  background: white;
+.composer {
+  padding: 10px 12px 14px;
+  border-top: 1px solid #eef1f6;
+  background: #fff;
 }
 
-.input-wrapper {
+.key-tip {
+  font-size: 12px;
+  color: #ef4444;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.composer-box {
   display: flex;
-  gap: 12px;
   align-items: flex-end;
+  gap: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 8px 8px 8px 12px;
+  background: #f8fafc;
 }
 
-.chat-textarea {
+.composer-box:focus-within {
+  border-color: #4f6ef7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.12);
+}
+
+.composer-box textarea {
   flex: 1;
-}
-
-.chat-textarea :deep(.el-textarea__inner) {
-  border-radius: 12px;
-  border: 1px solid #e8e8e8;
+  border: 0;
+  outline: none;
   resize: none;
-  transition: all 0.2s ease;
-}
-
-.chat-textarea :deep(.el-textarea__inner):focus {
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  background: transparent;
+  font-size: 14px;
+  line-height: 1.5;
+  max-height: 120px;
+  color: #111827;
 }
 
 .send-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-  border-radius: 12px;
-  padding: 12px 24px;
-  transition: all 0.3s ease;
-}
-
-.send-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: #4f6ef7;
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
 }
 
 .send-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.input-footer {
-  margin-top: 8px;
-  text-align: right;
-}
-
-.input-hint {
-  font-size: 12px;
-  color: #999;
-}
-
-.input-hint.warning {
-  color: #f56c6c;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.input-hint.warning :deep(.el-icon) {
-  font-size: 14px;
-}
-
-/* 自定义滚动条 */
-.chat-messages::-webkit-scrollbar {
+.chat-body::-webkit-scrollbar {
   width: 6px;
 }
 
-.chat-messages::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 3px;
+.chat-body::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 6px;
 }
 
-.chat-messages::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 3px;
+.ai-panel-enter-active,
+.ai-panel-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
 }
 
-.chat-messages::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #5568d3 0%, #65428a 100%);
+.ai-panel-enter-from,
+.ai-panel-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
 }
+
 </style>

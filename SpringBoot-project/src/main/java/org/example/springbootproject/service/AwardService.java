@@ -14,7 +14,7 @@ public interface AwardService {
      */
     PageBean<Award> list(Integer page, Integer pageSize, String projectName, 
                          String competitionName, String competitionLevel, 
-                         String awardLevel, Integer applicantId);
+                         String awardLevel, Integer applicantId, String applicantCollege);
 
     /**
      * 根据项目ID查询获奖记录列表

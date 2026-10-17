@@ -24,6 +24,12 @@
         ORDER BY create_time ASC
     </select>
 
+    <select id="listAll" resultMap="projectPlanResultMap">
+        SELECT id, project_id, file_path, file_name, file_size, file_hash, create_time, update_time
+        FROM project_plan
+        ORDER BY id DESC
+    </select>
+
     <!-- 根据ID查询计划书 -->
     <select id="getById" resultMap="projectPlanResultMap">
         SELECT id, project_id, file_path, file_name, file_size, file_hash, create_time, update_time

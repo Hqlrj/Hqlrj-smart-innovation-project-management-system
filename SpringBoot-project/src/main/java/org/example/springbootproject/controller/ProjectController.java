@@ -3,6 +3,7 @@ package org.example.springbootproject.controller;
 import org.example.springbootproject.pojo.AiReplyResponse;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.example.springbootproject.mapper.ProjectPlanMapper;
 import org.example.springbootproject.pojo.PageBean;
 import org.example.springbootproject.pojo.Project;
@@ -11,13 +12,17 @@ import org.example.springbootproject.pojo.Result;
 import org.example.springbootproject.pojo.StartReviewRequest;
 import org.example.springbootproject.pojo.StartReviewResponse;
 import org.example.springbootproject.pojo.PlanValidationResult;
+import org.example.springbootproject.service.AwardService;
 import org.example.springbootproject.service.NotificationService;
 import org.example.springbootproject.service.ProjectService;
 import org.example.springbootproject.service.UserService;
 import org.example.springbootproject.service.AiReviewService;
 import org.example.springbootproject.service.AiChatService;
+import org.example.springbootproject.service.DocumentIndexService;
 import org.example.springbootproject.service.DocumentParseService;
 import org.example.springbootproject.constant.AiReviewConstants;
+import org.example.springbootproject.pojo.User;
+import org.example.springbootproject.util.CollegeScope;
 import org.example.springbootproject.util.FileValidationUtil;
 import org.example.springbootproject.util.WordToPdfUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,11 +38,14 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintWriter;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -67,10 +75,16 @@ public class ProjectController {
     private DocumentParseService documentParseService;
 
     @Autowired
+    private DocumentIndexService documentIndexService;
+
+    @Autowired
     private AiChatService aiChatService;
 
     @Autowired
     private WordToPdfUtil wordToPdfUtil;
+
+    @Autowired
+    private AwardService awardService;
 
     // 文件上传路径（相对于项目根目录）
     private static final String UPLOAD_DIR = "uploads/project-plans/";
@@ -84,19 +98,44 @@ public class ProjectController {
             @RequestParam(defaultValue = "10") Integer pageSize,
             String projectName, String projectType, String status, String projectSpace, Integer applicantId,
             HttpServletRequest request) {
-        // 移除权限检查：所有用户都可以查看所有项目
-        PageBean<Project> pageBean = projectService.list(page, pageSize, projectName, projectType, status, projectSpace, applicantId);
+        String college = currentCollegeFilter(request);
+        PageBean<Project> pageBean = projectService.list(page, pageSize, projectName, projectType, status, projectSpace, applicantId, college);
         return Result.success(pageBean);
+    }
+
+    /**
+     * 项目一览统计数据：审核人/评委/系统管理员看全校，不按学院过滤。
+     */
+    @GetMapping("/overview-data")
+    public Result<Map<String, Object>> overviewData(HttpServletRequest request) {
+        String role = (String) request.getAttribute("role");
+        String college = null;
+        boolean allColleges = CollegeScope.isGlobalViewer(role)
+                || "审批人".equals(role)
+                || "评委老师".equals(role);
+        if (!allColleges) {
+            college = currentCollegeFilter(request);
+        }
+        PageBean<Project> projects = projectService.list(1, 10000, null, null, null, null, null, college);
+        PageBean<org.example.springbootproject.pojo.Award> awards =
+                awardService.list(1, 10000, null, null, null, null, null, college);
+        Map<String, Object> data = new HashMap<>();
+        data.put("projects", projects.getList());
+        data.put("awards", awards.getList());
+        return Result.success(data);
     }
 
     /**
      * 根据ID查询项目详情
      */
     @GetMapping("/{id}")
-    public Result<Project> getById(@PathVariable Integer id) {
+    public Result<Project> getById(@PathVariable Integer id, HttpServletRequest request) {
         Project project = projectService.getById(id);
         if (project == null) {
             return Result.error("项目不存在");
+        }
+        if (!canAccessProject(request, project)) {
+            return Result.error("只能查看本院项目");
         }
         return Result.success(project);
     }
@@ -131,7 +170,14 @@ public class ProjectController {
      * 更新项目
      */
     @PutMapping("/{id}")
-    public Result<Void> update(@PathVariable Integer id, @RequestBody Project project) {
+    public Result<Void> update(@PathVariable Integer id, @RequestBody Project project, HttpServletRequest request) {
+        Project existing = projectService.getById(id);
+        if (existing == null) {
+            return Result.error("项目不存在");
+        }
+        if (!canAccessProject(request, existing)) {
+            return Result.error("只能操作本院项目");
+        }
         project.setId(id);
         projectService.update(project);
         return Result.success();
@@ -141,7 +187,14 @@ public class ProjectController {
      * 删除项目
      */
     @DeleteMapping("/{id}")
-    public Result<Void> delete(@PathVariable Integer id) {
+    public Result<Void> delete(@PathVariable Integer id, HttpServletRequest request) {
+        Project existing = projectService.getById(id);
+        if (existing == null) {
+            return Result.error("项目不存在");
+        }
+        if (!canAccessProject(request, existing)) {
+            return Result.error("只能操作本院项目");
+        }
         projectService.delete(id);
         return Result.success();
     }
@@ -164,6 +217,13 @@ public class ProjectController {
                                                     HttpServletRequest httpRequest) {
         // 从JWT中获取当前用户ID
         Integer userId = (Integer) httpRequest.getAttribute("userId");
+        Project existing = projectService.getById(id);
+        if (existing == null) {
+            return Result.error("项目不存在");
+        }
+        if (!canAccessProject(httpRequest, existing)) {
+            return Result.error("只能审核本院项目");
+        }
         
         // 调用AI评审服务
         StartReviewResponse response = aiReviewService.startReview(id, request, userId);
@@ -229,7 +289,7 @@ public class ProjectController {
             }
             
             System.out.println("开始调用AI服务");
-            org.example.springbootproject.pojo.AiChatResponse response = aiChatService.chatWithUserKey(request, userApiKey);
+            org.example.springbootproject.pojo.AiChatResponse response = aiChatService.chatWithUserKey(request, userApiKey, user);
             System.out.println("AI服务响应: " + response);
             
             if (!response.isSuccess()) {
@@ -241,6 +301,56 @@ public class ProjectController {
             e.printStackTrace();
             return Result.error("AI聊天失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * AI 聊天流式接口（SSE）
+     */
+    @PostMapping("/ai-chat/stream")
+    public void aiChatStream(@RequestBody org.example.springbootproject.pojo.AiChatRequest request,
+                             HttpServletRequest httpRequest,
+                             HttpServletResponse httpResponse) throws IOException {
+        httpResponse.setStatus(200);
+        httpResponse.setContentType("text/event-stream;charset=UTF-8");
+        httpResponse.setHeader("Cache-Control", "no-cache, no-transform");
+        httpResponse.setHeader("Connection", "keep-alive");
+        httpResponse.setHeader("X-Accel-Buffering", "no");
+        PrintWriter writer = httpResponse.getWriter();
+        com.google.gson.Gson gson = new com.google.gson.Gson();
+
+        java.util.function.Consumer<java.util.Map<String, String>> sendEvent = payload -> {
+            writer.write("data: " + gson.toJson(payload) + "\n\n");
+            writer.flush();
+            try {
+                httpResponse.flushBuffer();
+            } catch (IOException ignored) {
+            }
+        };
+
+        Integer userId = (Integer) httpRequest.getAttribute("userId");
+        if (userId == null) {
+            sendEvent.accept(java.util.Map.of("type", "error", "message", "用户未登录"));
+            return;
+        }
+        var user = userService.getById(userId);
+        if (user == null) {
+            sendEvent.accept(java.util.Map.of("type", "error", "message", "用户不存在"));
+            return;
+        }
+        String userApiKey = user.getApiKey();
+        if (userApiKey == null || userApiKey.trim().isEmpty()) {
+            sendEvent.accept(java.util.Map.of("type", "error", "message", "请先在设置中配置API Key"));
+            return;
+        }
+
+        aiChatService.streamWithUserKey(
+                request,
+                userApiKey,
+                user,
+                delta -> sendEvent.accept(java.util.Map.of("type", "delta", "content", delta)),
+                cid -> sendEvent.accept(java.util.Map.of("type", "done", "conversationId", cid == null ? "" : cid)),
+                err -> sendEvent.accept(java.util.Map.of("type", "error", "message", err == null ? "AI聊天失败" : err))
+        );
     }
 
     /**
@@ -338,6 +448,7 @@ public class ProjectController {
                     if (projectId != null) {
                         try {
                             projectPlanMapper.insert(plan);
+                            documentIndexService.indexPlan(projectId, plan.getId(), normalizedPath, originalFilename);
                             
                             // 同时更新项目表中的计划书路径（取第一个计划书）
                             Project project = projectService.getById(projectId);
@@ -593,6 +704,13 @@ public class ProjectController {
         Integer userId = (Integer) request.getAttribute("userId");
         // 查询用户信息获取真实姓名
         var user = userService.getById(userId);
+        Project existing = projectService.getById(id);
+        if (existing == null) {
+            return Result.error("项目不存在");
+        }
+        if (!canAccessProject(request, existing)) {
+            return Result.error("只能审批本院项目");
+        }
         String auditorName = user != null ? user.getName() : (String) request.getAttribute("username");
         projectService.approve(id, auditorName);
         // 发送通知给项目申请人
@@ -619,6 +737,13 @@ public class ProjectController {
         Integer userId = (Integer) request.getAttribute("userId");
         // 查询用户信息获取真实姓名
         var user = userService.getById(userId);
+        Project existing = projectService.getById(id);
+        if (existing == null) {
+            return Result.error("项目不存在");
+        }
+        if (!canAccessProject(request, existing)) {
+            return Result.error("只能审批本院项目");
+        }
         String auditorName = user != null ? user.getName() : (String) request.getAttribute("username");
         projectService.reject(id, auditorName, reason);
         // 发送通知给项目申请人
@@ -639,8 +764,25 @@ public class ProjectController {
     @GetMapping("/my-projects")
     public Result<List<Project>> getMyProjects(HttpServletRequest request) {
         Integer userId = (Integer) request.getAttribute("userId");
-        PageBean<Project> pageBean = projectService.list(1, 1000, null, null, null, null, userId);
+        PageBean<Project> pageBean = projectService.list(1, 1000, null, null, null, null, userId, null);
         return Result.success(pageBean.getList());
+    }
+
+    private String currentCollegeFilter(HttpServletRequest request) {
+        Integer userId = (Integer) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+        User user = userId == null ? null : userService.getById(userId);
+        return CollegeScope.collegeFilter(user, role);
+    }
+
+    private boolean canAccessProject(HttpServletRequest request, Project project) {
+        Integer userId = (Integer) request.getAttribute("userId");
+        String role = (String) request.getAttribute("role");
+        if (userId != null && userId.equals(project.getApplicantId())) {
+            return true;
+        }
+        User user = userId == null ? null : userService.getById(userId);
+        return CollegeScope.canViewCollege(role, CollegeScope.collegeFilter(user, role), project.getApplicantCollege());
     }
 
     /**

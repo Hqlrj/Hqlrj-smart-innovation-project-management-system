@@ -11,32 +11,61 @@
         <result property="publisherId" column="publisher_id"/>
         <result property="publisherName" column="publisher_name"/>
         <result property="publisherRole" column="publisher_role"/>
+        <result property="publisherCollege" column="publisher_college"/>
         <result property="isTop" column="is_top"/>
+        <result property="isRead" column="is_read"/>
         <result property="status" column="status"/>
         <result property="createTime" column="create_time"/>
         <result property="updateTime" column="update_time"/>
     </resultMap>
 
-    <!-- 公告列表 -->
+    <!-- 公告列表：未读默认只看待查看，看完后不再占置顶位 -->
     <select id="list" resultMap="noticeResultMap">
-        SELECT id, title, content, publisher_id, publisher_name, publisher_role,
-               is_top, status, create_time, update_time
-        FROM notice
+        SELECT n.id, n.title, n.content, n.publisher_id, n.publisher_name, n.publisher_role,
+               u.college as publisher_college,
+               n.is_top, n.status, n.create_time, n.update_time,
+               CASE WHEN nr.id IS NULL THEN 0 ELSE 1 END as is_read
+        FROM notice n
+        LEFT JOIN user u ON n.publisher_id = u.id
+        LEFT JOIN notice_read nr ON nr.notice_id = n.id AND nr.user_id = #{userId}
         <where>
             <if test="title != null and title != ''">
-                AND title LIKE CONCAT('%', #{title}, '%')
+                AND n.title LIKE CONCAT('%', #{title}, '%')
             </if>
-            AND status = 'normal'
+            AND n.status = 'normal'
+            <if test="viewerCollege != null">
+                AND (
+                    n.publisher_role = '系统管理员'
+                    <choose>
+                        <when test="viewerCollege == ''">
+                            AND 1 = 1
+                        </when>
+                        <otherwise>
+                            OR u.college = #{viewerCollege}
+                        </otherwise>
+                    </choose>
+                )
+            </if>
+            <if test="readStatus == 'unread'">
+                AND nr.id IS NULL
+            </if>
+            <if test="readStatus == 'read'">
+                AND nr.id IS NOT NULL
+            </if>
         </where>
-        ORDER BY is_top DESC, create_time DESC
+        ORDER BY n.is_top DESC, n.create_time DESC
     </select>
 
     <!-- 根据ID查询公告 -->
     <select id="getById" resultMap="noticeResultMap">
-        SELECT id, title, content, publisher_id, publisher_name, publisher_role,
-               is_top, status, create_time, update_time
-        FROM notice
-        WHERE id = #{id}
+        SELECT n.id, n.title, n.content, n.publisher_id, n.publisher_name, n.publisher_role,
+               u.college as publisher_college,
+               n.is_top, n.status, n.create_time, n.update_time,
+               CASE WHEN nr.id IS NULL THEN 0 ELSE 1 END as is_read
+        FROM notice n
+        LEFT JOIN user u ON n.publisher_id = u.id
+        LEFT JOIN notice_read nr ON nr.notice_id = n.id AND nr.user_id = #{userId}
+        WHERE n.id = #{id}
     </select>
 
     <!-- 新增公告 -->
@@ -47,9 +76,18 @@
                 #{isTop}, #{status}, #{createTime})
     </insert>
 
+    <insert id="markRead">
+        INSERT IGNORE INTO notice_read (notice_id, user_id, read_time)
+        VALUES (#{noticeId}, #{userId}, NOW())
+    </insert>
+
     <!-- 删除公告 -->
     <delete id="delete">
         DELETE FROM notice WHERE id = #{id}
+    </delete>
+
+    <delete id="deleteReadsByNoticeId">
+        DELETE FROM notice_read WHERE notice_id = #{noticeId}
     </delete>
 
 </mapper>

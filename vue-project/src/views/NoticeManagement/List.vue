@@ -1,134 +1,124 @@
 <template>
-  <div class="notice-list-container">
-    <el-card shadow="never" class="search-card">
-      <el-form :inline="true" :model="query" label-width="80px">
-        <el-form-item label="标题">
-          <el-input v-model="query.title" placeholder="请输入公告标题" clearable />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">查询</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <el-card shadow="never" class="table-card">
-      <el-table
-        v-loading="loading"
-        :data="notices"
-        border
-        style="width: 100%"
-        :empty-text="'暂无公告'"
-        @row-dblclick="handleRowDblClick"
-      >
-        <el-table-column prop="title" label="标题" min-width="160" align="center" header-align="center" show-overflow-tooltip />
-        <!-- 内容列：只显示“查看”按钮，不直接展示内容 -->
-        <el-table-column label="内容" min-width="100" align="center" header-align="center">
-          <template #default="{ row }">
-            <el-button
-              type="primary"
-              text
-              size="small"
-              :icon="View"
-              @click="handleViewClick(row)"
-            >
-              查看
-            </el-button>
-          </template>
-        </el-table-column>
-        <el-table-column prop="publisherName" label="发布人" min-width="120" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="publisherRole" label="角色" min-width="110" align="center" header-align="center" show-overflow-tooltip />
-        <el-table-column prop="createTime" label="发布时间" min-width="170" align="center" header-align="center" />
-        <el-table-column prop="isTop" label="置顶" min-width="80" align="center" header-align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.isTop === 1" type="danger" size="small">置顶</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <!-- 操作列：删除（管理员可删所有，其他只能删自己发布的） -->
-        <el-table-column label="操作" min-width="100" align="center" header-align="center">
-          <template #default="{ row }">
-            <el-button
-              v-if="canDelete(row)"
-              type="danger"
-              size="small"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 公告详情（美化弹窗） -->
-    <el-dialog
-      v-model="detailVisible"
-      width="720px"
-      class="notice-dialog"
-      :show-close="false"
-      :close-on-click-modal="false"
-      destroy-on-close
-      center
-    >
-      <template #header>
-        <div class="dialog-header">
-          <div class="dialog-title">{{ currentNotice?.title || '公告详情' }}</div>
-          <div class="dialog-subtitle">
-            <span>发布人：{{ currentNotice?.publisherName || '-' }}</span>
-            <span>角色：{{ currentNotice?.publisherRole || '-' }}</span>
-            <span>发布时间：{{ currentNotice?.createTime || '-' }}</span>
-          </div>
-        </div>
-      </template>
-
-      <div class="dialog-body">
-        <div
-          v-if="currentNotice"
-          class="notice-content"
-          v-html="formatContent(currentNotice.content)"
-        ></div>
-        <div v-else class="notice-empty">暂无内容</div>
+  <div class="notice-page">
+    <header class="toolbar">
+      <div>
+        <h2>公告中心</h2>
+        <p>默认只看待查看公告；点开阅读后会从左侧消失，避免置顶占满列表</p>
       </div>
+      <div class="toolbar-actions">
+        <el-radio-group v-model="query.readStatus" @change="handleTabChange">
+          <el-radio-button value="unread">待查看</el-radio-button>
+          <el-radio-button value="read">已查看</el-radio-button>
+        </el-radio-group>
+        <el-input
+          v-model="query.title"
+          placeholder="搜索公告标题"
+          clearable
+          class="search-input"
+          @keyup.enter="handleSearch"
+          @clear="handleReset"
+        />
+        <el-button type="primary" @click="handleSearch">查询</el-button>
+        <el-button v-if="canPublish" type="primary" plain @click="goPublish">发布公告</el-button>
+      </div>
+    </header>
 
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button type="primary" @click="detailVisible = false">我已知晓</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <div v-loading="loading" class="notice-shell">
+      <aside class="notice-list">
+        <div v-if="notices.length === 0" class="empty-list">{{ emptyText }}</div>
+        <button
+          v-for="item in notices"
+          :key="item.id"
+          type="button"
+          class="notice-item"
+          :class="{ active: currentNotice?.id === item.id, pinned: item.isTop === 1 && query.readStatus === 'unread' }"
+          @click="openDetail(item)"
+        >
+          <div class="item-top">
+            <el-tag v-if="item.isTop === 1 && query.readStatus === 'unread'" type="danger" size="small" effect="dark">置顶</el-tag>
+            <span class="item-title">{{ item.title }}</span>
+          </div>
+          <div class="item-publisher">
+            <span class="avatar">{{ (item.publisherName || '公').slice(0, 1) }}</span>
+            <div>
+              <strong>发布人：{{ item.publisherName || '未知' }}</strong>
+              <p>{{ item.publisherRole || '未知角色' }} · {{ item.createTime }}</p>
+            </div>
+          </div>
+        </button>
+      </aside>
+
+      <section class="notice-detail">
+        <template v-if="currentNotice">
+          <div class="detail-head">
+            <div>
+              <div class="detail-tags">
+                <el-tag v-if="currentNotice.isTop === 1" type="danger" size="small">置顶</el-tag>
+                <el-tag size="small" type="info" effect="plain">{{ currentNotice.isRead === 1 ? '已查看' : '待查看' }}</el-tag>
+                <el-tag size="small" effect="plain">{{ currentNotice.publisherRole || '公告' }}</el-tag>
+              </div>
+              <h3>{{ currentNotice.title }}</h3>
+              <div class="detail-meta">
+                <span>发布人：{{ currentNotice.publisherName || '-' }}</span>
+                <span>时间：{{ currentNotice.createTime || '-' }}</span>
+              </div>
+            </div>
+            <el-button
+              v-if="canDelete(currentNotice)"
+              type="danger"
+              plain
+              @click="handleDelete(currentNotice)"
+            >删除</el-button>
+          </div>
+          <div class="detail-body" v-html="formatContent(currentNotice.content)" />
+        </template>
+        <el-empty v-else :description="query.readStatus === 'unread' ? '点左侧待查看公告后，看完会从列表中移除' : '点左侧已查看公告，这里显示完整内容'" />
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { View } from '@element-plus/icons-vue'
 import { useLoginStore } from '@/stores/login'
+import { hasRoutePermission } from '@/utils/permission'
 import { getNoticeList, getNoticeById, deleteNotice, type Notice, type NoticeQueryParams, type PageResult } from '@/api/notice'
 
+const router = useRouter()
+const route = useRoute()
 const loginStore = useLoginStore()
 const userId = computed(() => loginStore.userInfo?.id)
 const userRole = computed(() => (loginStore.userInfo as any)?.role || '')
 const isAdmin = computed(() => userRole.value === '系统管理员' || userRole.value === '项目管理员')
+const canPublish = computed(() => hasRoutePermission(userRole.value, 'notice-publish'))
 
 const loading = ref(false)
 const notices = ref<Notice[]>([])
 const query = ref<NoticeQueryParams>({
   title: '',
+  readStatus: 'unread',
   page: 1,
   pageSize: 50
 })
-
-const detailVisible = ref(false)
 const currentNotice = ref<Notice | null>(null)
+const emptyText = computed(() =>
+  query.value.readStatus === 'unread' ? '暂无待查看公告' : '暂无已查看公告'
+)
 
-const fetchList = async () => {
+const fetchList = async (keepCurrent = false) => {
   loading.value = true
   try {
     const res = await getNoticeList(query.value) as unknown as PageResult<Notice>
     notices.value = res?.list || []
+    if (
+      !keepCurrent &&
+      currentNotice.value &&
+      !notices.value.some((n) => n.id === currentNotice.value?.id)
+    ) {
+      currentNotice.value = null
+    }
   } catch (error: any) {
     ElMessage.error(error.message || '获取公告列表失败')
   } finally {
@@ -136,35 +126,39 @@ const fetchList = async () => {
   }
 }
 
+const handleTabChange = () => {
+  query.value.page = 1
+  currentNotice.value = null
+  fetchList()
+}
+
 const handleSearch = () => {
   query.value.page = 1
+  currentNotice.value = null
   fetchList()
 }
 
 const handleReset = () => {
   query.value.title = ''
   query.value.page = 1
+  currentNotice.value = null
   fetchList()
 }
 
-// 表格行双击 & 按钮点击都复用查看逻辑
+const goPublish = () => {
+  router.push('/notice-publish')
+}
+
 const openDetail = async (row: Notice) => {
   try {
-    // 重新请求详情，确保内容字段完整
     const detail = await getNoticeById(row.id as number)
     currentNotice.value = detail
-    detailVisible.value = true
+    if (query.value.readStatus === 'unread') {
+      notices.value = notices.value.filter((n) => n.id !== row.id)
+    }
   } catch (error: any) {
     ElMessage.error(error.message || '获取公告详情失败')
   }
-}
-
-const handleRowDblClick = (row: Notice) => {
-  openDetail(row)
-}
-
-const handleViewClick = (row: Notice) => {
-  openDetail(row)
 }
 
 const canDelete = (row: Notice) => {
@@ -179,19 +173,11 @@ const handleDelete = async (row: Notice) => {
     await ElMessageBox.confirm(
       `确定要删除公告 “${row.title}” 吗？删除后不可恢复。`,
       '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
     )
     await deleteNotice(row.id)
     ElMessage.success('删除成功')
-    // 若当前详情弹窗展示的是被删除公告，关闭弹窗
-    if (currentNotice.value?.id === row.id) {
-      detailVisible.value = false
-      currentNotice.value = null
-    }
+    currentNotice.value = null
     fetchList()
   } catch (error: any) {
     if (error !== 'cancel' && error !== 'close') {
@@ -205,89 +191,217 @@ const formatContent = (content: string | undefined) => {
   return content.replace(/\n/g, '<br/>')
 }
 
-onMounted(() => {
-  fetchList()
+onMounted(async () => {
+  await fetchList()
+  const noticeId = Number(route.query.id)
+  if (noticeId) {
+    await openDetail({ id: noticeId } as Notice)
+  }
 })
+
+watch(
+  () => route.query.id,
+  async (id) => {
+    const noticeId = Number(id)
+    if (noticeId) {
+      await openDetail({ id: noticeId } as Notice)
+    }
+  }
+)
 </script>
 
 <style scoped>
-.notice-list-container {
-  padding: 20px;
-  background: white;
-  min-height: calc(100vh - 60px);
+.notice-page {
+  padding: 16px 20px 20px;
+  min-height: calc(100vh - 8px);
+  background: #f5f7fa;
 }
 
-.search-card {
-  margin-bottom: 20px;
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 14px;
 }
 
-.table-card {
-  background: white;
+.toolbar h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #1f2d3d;
+}
+
+.toolbar p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #909399;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.search-input {
+  width: 240px;
+}
+
+.notice-shell {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  gap: 14px;
+  min-height: calc(100vh - 96px);
+}
+
+.notice-list,
+.notice-detail {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+}
+
+.notice-list {
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.notice-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.notice-item:hover {
+  background: #f8fafc;
+}
+
+.notice-item.active {
+  border-color: #b3d8ff;
+  background: #ecf5ff;
+}
+
+.notice-item.pinned {
+  background: #fff7f7;
+}
+
+.notice-item.pinned.active {
+  background: #ecf5ff;
+}
+
+.item-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-publisher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 10px;
 }
 
-.notice-title {
-  margin: 0 0 10px;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.notice-meta {
-  margin-bottom: 16px;
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #4f6ef7;
+  color: #fff;
   font-size: 13px;
-  color: #909399;
   display: flex;
-  gap: 16px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.notice-content {
-  font-size: 14px;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-
-.notice-dialog :deep(.el-dialog__header) {
-  margin-right: 0;
-  padding-bottom: 8px;
-}
-
-.dialog-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid #ebeef5;
-}
-
-.dialog-title {
-  font-size: 18px;
-  font-weight: 600;
+.item-publisher strong {
+  display: block;
+  font-size: 13px;
   color: #303133;
 }
 
-.dialog-subtitle {
+.item-publisher p {
+  margin: 2px 0 0;
   font-size: 12px;
   color: #909399;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
 }
 
-.dialog-body {
-  max-height: 420px;
-  overflow-y: auto;
-  padding-right: 4px;
-  padding-top: 4px;
-}
-
-.notice-empty {
+.empty-list {
+  padding: 48px 0;
   text-align: center;
   color: #909399;
-  padding: 40px 0;
 }
 
-.dialog-footer {
+.notice-detail {
+  padding: 22px 24px;
+  overflow-y: auto;
+}
+
+.detail-head {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.detail-tags {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.detail-head h3 {
+  margin: 0;
+  font-size: 22px;
+  color: #1f2d3d;
+  line-height: 1.4;
+}
+
+.detail-meta {
+  margin-top: 10px;
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #909399;
+}
+
+.detail-body {
+  padding-top: 18px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #303133;
+}
+
+@media (max-width: 960px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .notice-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .notice-list {
+    max-height: 320px;
+  }
 }
 </style>

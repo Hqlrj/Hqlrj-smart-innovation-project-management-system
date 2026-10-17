@@ -42,6 +42,7 @@
 - [二十三、部署](#二十三部署)
 - [二十四、Postman / Apifox 导入片段](#二十四postman--apifox-导入片段)
 - [二十五、常见问题（FAQ）](#二十五常见问题faq)
+- [二十六、智能助手与向量检索](#二十六智能助手与向量检索)
 
 ---
 
@@ -59,9 +60,10 @@
 - **用户与角色管理**：注册、登录、审批、头像上传、角色分配
 - **项目申报与审批**：项目信息、项目成员、指导老师、计划书文件上传与多级审批
 - **获奖记录管理**：获奖登记、证明图片上传与审批
-- **公告管理**：公告发布与查看
+- **公告管理**：公告发布、查看与已读记录（看过后从待查看列表消失）
 - **站内消息通知**：审批结果、公告发布等自动推送
-- **项目一览 / 进度管理**：项目状态总览与流程跟踪
+- **项目一览 / 进度管理**：项目状态总览、学院范围与流程跟踪
+- **AI 能力**：计划书解析与在线预览、AI 评审、DeepSeek 对话（流式 SSE）、LangChain4j 工具调用、MySQL 向量检索；Redis 保存会话记忆（未启动时回退内存）
 
 系统按角色区分权限，主要角色包括：**系统管理员、项目管理员、项目负责人、指导老师、评委老师、审批人**。
 
@@ -77,13 +79,12 @@
 │  · 路由 / 页面 / 组件     │     Result<T> 统一响应       │  · JWT 认证与拦截器          │
 │  · Pinia 状态管理        │                             │  · 全局异常处理              │
 │  · Axios 请求封装        │                             │  · 文件上传（uploads/）      │
-│  · 角色权限控制          │                             │                             │
+│  · 角色权限控制          │                             │  · AI 对话 / 评审 / 检索    │
 └────────────────────────┘                             └──────────────┬─────────────┘
-         ▲                                                             │ MyBatis
-         │  静态资源 /api/uploads/**（代理转发）                          ▼
-         │                                                   ┌────────────────────┐
-         └───────────────────────────────────────────────────│   MySQL (bsgl)     │
-                                                              └────────────────────┘
+         ▲                                                             │
+         │  静态资源 /api/uploads/**（代理转发）                          ├── MyBatis ──▶ MySQL (bsgl)
+         │                                                             ├── 会话记忆 ──▶ Redis（可选，失败回退内存）
+         └─────────────────────────────────────────────────────────────└── 大模型 ────▶ DeepSeek API
 ```
 
 **开发环境请求链路**：前端页面 → `axios`（baseURL=`/api`）→ Vite 开发代理（去掉 `/api` 前缀）→ 后端 `http://localhost:8080`。
@@ -115,15 +116,18 @@
 | 分类 | 技术 / 版本 |
 | --- | --- |
 | 语言 | Java 21 |
-| 框架 | Spring Boot 4.0.0（Spring Framework 7.0.1） |
-| Web | spring-boot-starter-webmvc（内嵌 Tomcat 11） |
-| 持久层 | MyBatis（mybatis-spring-boot-starter 4.0.0） |
-| 分页 | PageHelper（pagehelper-spring-boot-starter 1.4.7） |
-| 数据库 | MySQL（mysql-connector-j 9.5.0） |
-| 连接池 | HikariCP |
-| 认证 | JWT（jjwt 0.11.5 + java-jwt 3.18.2） |
-| 工具 | Lombok 1.18.42 |
+| 框架 | Spring Boot 3.2.0 |
+| Web | spring-boot-starter-web（内嵌 Tomcat） |
+| 持久层 | MyBatis（mybatis-spring-boot-starter 3.0.3） |
+| 分页 | PageHelper（pagehelper-spring-boot-starter 2.1.0） |
+| 数据库 | MySQL（mysql-connector-j 8.0.33） |
+| 认证 | JWT（jjwt 0.12.3） |
+| 文档处理 | Apache POI 5.2.3（doc/docx）+ xdocreport（Word 转 PDF） |
+| AI | LangChain4j 0.36.2 + DeepSeek（OpenAI 兼容接口） |
+| 会话与检索 | Redis（可选）+ MySQL 向量表 `ai_vector_chunk`；可选 Qdrant |
+| 工具 | Lombok、OkHttp、Gson |
 | 构建 | Maven（含 `mvnw` / `mvnw.cmd` 包装器） |
+| 本地中间件 | `docker-compose.yml`（Redis 7、Qdrant 1.12） |
 
 ---
 
@@ -139,7 +143,8 @@
 - **JDK 21**（Oracle OpenJDK 21 已验证）
 - **Maven 3.9+**（可使用项目自带 `mvnw.cmd`）
 - **MySQL 8.x**，需提前创建数据库 `bsgl`
-- 默认服务端口：**8080**（未在配置中显式指定 `server.port`）
+- 默认服务端口：**8080**（`server.port=8080`）
+- 可选：**Docker**，用于启动 Redis（会话记忆）与 Qdrant（向量库，默认关闭）
 
 ---
 
@@ -156,6 +161,9 @@ code2/
 │   │   │   ├── project.ts           # 项目 / 获奖 / 计划书
 │   │   │   ├── notice.ts            # 公告管理
 │   │   │   └── notification.ts      # 站内通知
+│   │   ├── components/
+│   │   │   ├── AiChatDialog.vue     # AI 对话弹窗（流式）
+│   │   │   └── AiChatWidget.vue     # 全局 AI 助手入口
 │   │   ├── assets/                  # 全局样式与静态资源
 │   │   ├── router/index.ts          # 路由表 + 全局路由守卫
 │   │   ├── stores/                  # Pinia 状态管理
@@ -188,10 +196,12 @@ code2/
 ├── SpringBoot-project/              # 后端工程（Spring Boot）
 │   ├── src/main/java/org/example/springbootproject/
 │   │   ├── SpringBootProjectApplication.java   # 启动类（@MapperScan 扫描 mapper）
+│   │   ├── ai/                                 # LangChain Agent、工具、Redis 会话
 │   │   ├── config/                             # 配置类
 │   │   │   ├── WebConfig.java                  # 跨域、拦截器、静态资源映射
 │   │   │   ├── JwtInterceptor.java             # JWT 登录拦截器
-│   │   │   └── GlobalExceptionHandler.java     # 全局异常处理
+│   │   │   ├── GlobalExceptionHandler.java     # 全局异常处理
+│   │   │   └── VectorIndexBackfill.java        # 启动时回填向量索引
 │   │   ├── controller/                         # REST 接口层
 │   │   │   ├── AuthController.java             # 登录 / 忘记密码
 │   │   │   ├── UserController.java             # 用户管理 / 头像上传
@@ -207,13 +217,14 @@ code2/
 │   ├── src/main/resources/
 │   │   ├── application.properties              # 主配置文件
 │   │   ├── mapper/*.xml                        # MyBatis SQL 映射
-│   │   └── *.sql                               # 建表与迁移脚本
+│   │   └── db/*.sql                            # 建表与迁移脚本
 │   ├── uploads/                                # 上传文件存放目录（运行时生成）
 │   │   ├── avatars/                            # 用户头像
 │   │   ├── project-plans/                      # 项目计划书
 │   │   └── award-certificates/                 # 获奖证明图片
 │   └── pom.xml
 │
+├── docker-compose.yml               # Redis + Qdrant
 └── README.md                        # 本文档
 ```
 
@@ -238,6 +249,9 @@ CREATE DATABASE IF NOT EXISTS bsgl DEFAULT CHARACTER SET utf8mb4;
 - `alter_project_member_add_gender.sql`、`alter_project_table.sql`
 - `alter_award_table.sql`、`alter_award_add_reject_reason.sql`
 - `alter_add_project_plan_table.sql`、`alter_user_add_avatar.sql`
+- `ai_review_schema.sql`、`ai_conversation_schema.sql`、`alter_project_ai_review.sql`、`alter_user_add_api_key.sql`
+- `ai_vector_chunk.sql`（文档向量块）
+- `notice_read_schema.sql`（公告已读）
 
 > 说明：`user` / `role` 表为系统基础表，需保证已存在（用户注册依赖 `role` 表中的角色数据）。
 
@@ -245,7 +259,17 @@ CREATE DATABASE IF NOT EXISTS bsgl DEFAULT CHARACTER SET utf8mb4;
 
 编辑 `SpringBoot-project/src/main/resources/application.properties`，将数据库账号密码改为本地实际值（见「十三、后端配置说明」）。
 
-### 3. 启动后端
+### 3. 可选：启动 Redis / Qdrant
+
+在仓库根目录执行：
+
+```bash
+docker compose up -d
+```
+
+未启动 Redis 时，AI 会话记忆自动使用内存，不影响主业务启动。Qdrant 默认关闭（`ai.qdrant.enabled=false`），当前检索以 MySQL 表 `ai_vector_chunk` 为准。
+
+### 4. 启动后端
 
 - **IDE 启动**：运行 `SpringBootProjectApplication` 的 `main` 方法。
 - **命令行启动**：
@@ -264,7 +288,7 @@ cd SpringBoot-project
 
 > ⚠️ **工作目录提示**：文件上传与静态资源访问均基于 `System.getProperty("user.dir")`（JVM 启动工作目录）下的 `uploads/` 目录。请确保以 `SpringBoot-project` 作为工作目录启动，使上传目录与已有文件位置一致。
 
-### 4. 启动前端
+### 5. 启动前端
 
 ```bash
 cd vue-project
@@ -494,11 +518,32 @@ pagehelper.reasonable=true
 pagehelper.support-methods-arguments=true
 pagehelper.params=count=countSql
 
+# 服务端口
+server.port=8080
+
+# DeepSeek
+ai.llm.api-url=https://api.deepseek.com/v1/chat/completions
+ai.llm.api-key=
+ai.llm.model-name=deepseek-chat
+
+# Redis 会话记忆（未启动时回退内存）
+ai.redis.host=localhost
+ai.redis.port=6379
+
+# LangChain4j；关闭则回退原生 Function Calling
+ai.langchain.enabled=true
+
+# 向量检索（MySQL）；Qdrant 默认关闭
+ai.vector.dimension=384
+ai.vector.top-k=4
+ai.qdrant.enabled=false
+
 # 文件上传限制
-spring.servlet.multipart.max-file-size=100MB
-spring.servlet.multipart.max-request-size=100MB
-spring.servlet.multipart.enabled=true
+spring.servlet.multipart.max-file-size=10MB
+spring.servlet.multipart.max-request-size=50MB
 ```
+
+用户对话使用的 DeepSeek Key 保存在用户表，通过 `/users/api-key` 配置，不写在全局配置里。
 
 > 生产环境建议：将数据库密码、JWT 密钥等敏感信息改为环境变量或配置中心管理。
 
@@ -610,6 +655,9 @@ spring.servlet.multipart.enabled=true
 | PUT | `/users/{id}` | 更新用户 |
 | DELETE | `/users/{id}` | 删除用户 |
 | POST | `/users/upload-avatar` | 上传头像（表单参数：`file`、`userId`），返回头像访问路径 |
+| POST | `/users/api-key` | 保存当前用户的 DeepSeek API Key |
+| GET | `/users/api-key` | 查询是否已配置 API Key |
+| DELETE | `/users/api-key` | 清除 API Key |
 
 ### 17.3 角色模块（RoleController，前缀 `/roles`）
 
@@ -637,6 +685,16 @@ spring.servlet.multipart.enabled=true
 | DELETE | `/projects/plan/{id}` | 删除计划书（同时删文件与记录） |
 | GET | `/projects/download-template` | 获取计划书模板路径 |
 | GET | `/projects/my-projects` | 获取当前用户创建的项目（下拉选择用） |
+| GET | `/projects/overview-data` | 项目一览统计（按学院范围） |
+| POST | `/projects/{id}/start-review` | 发起人工/AI 评审 |
+| GET | `/projects/ai-review/{taskId}` | AI 评审任务详情 |
+| GET | `/projects/ai-review/{taskId}/sections` | AI 评审章节详情 |
+| POST | `/projects/ai-chat` | AI 对话（需用户已配置 API Key） |
+| POST | `/projects/ai-chat/stream` | AI 对话流式输出（SSE） |
+| GET | `/projects/plan/{id}/file` | 下载计划书原文件 |
+| GET | `/projects/plan/{id}/preview-pdf` | 计划书转 PDF 预览 |
+| GET | `/projects/{id}/plan-file` | 按项目下载计划书 |
+| GET | `/projects/{id}/plan-preview-pdf` | 按项目预览计划书 PDF |
 
 ### 17.5 获奖模块（AwardController，前缀 `/awards`）
 
@@ -860,6 +918,10 @@ Content-Type: application/json
 | `award` | 获奖记录表 | id、project_id、project_name、competition_name、competition_level、award_level、award_certificate、status、reject_reason |
 | `notice` | 公告表 | id、title、content、publisher_id、publisher_name、publisher_role、is_top、status |
 | `notification` | 站内通知表 | id、user_id、title、content、type、related_id、is_read、create_time |
+| `notice_read` | 公告已读 | notice_id、user_id、read_time（唯一约束 notice_id + user_id） |
+| `ai_vector_chunk` | 文档向量块 | source_type（notice/plan）、source_id、project_id、college、content、embedding |
+| `ai_review_task` / `ai_review_section` | AI 评审任务与章节 | 见 `ai_review_schema.sql` |
+| `ai_conversation` | AI 会话 | 见 `ai_conversation_schema.sql` |
 
 ### 关键状态字典
 
@@ -1126,7 +1188,24 @@ server {
 - `role` 表中无对应 `roleId`，请先初始化角色数据。
 
 **Q8：上传大文件报「文件大小超过限制」？**
-- 单文件上限 100MB，由 `spring.servlet.multipart.max-file-size` 控制；经 Nginx 部署时还需同步调整 `client_max_body_size`。
+- 当前配置单文件上限 10MB、单次请求 50MB（`spring.servlet.multipart.max-file-size` / `max-request-size`）；经 Nginx 部署时还需同步调整 `client_max_body_size`。
+
+---
+
+---
+
+## 二十六、智能助手与向量检索
+
+全局入口在布局页的 `AiChatWidget`，对话窗口为 `AiChatDialog`。调用链：
+
+1. 用户在个人设置中通过 `POST /users/api-key` 保存 DeepSeek Key。
+2. 前端请求 `POST /projects/ai-chat` 或流式接口 `POST /projects/ai-chat/stream`（`text/event-stream`，事件类型 `delta` / `done` / `error`）。
+3. `ai.langchain.enabled=true` 时由 LangChain4j `SystemAssistant` 编排工具：按项目名查找、再检索计划书正文后归纳回答。关闭时回退到原生 Function Calling。
+4. 计划书与公告写入时切块，经 `EmbeddingService`（当前为哈希向量实现）写入 `ai_vector_chunk`。启动类 `VectorIndexBackfill` 会补齐历史数据。
+5. 检索按学院范围过滤：本院数据对本院可见，学院为空的内容全校可见。
+6. 多轮对话优先写入 Redis（键过期时间 `ai.redis.ttl-seconds`，默认 1 天）。Redis 不可用时使用进程内内存，不阻止应用启动。
+
+计划书在线预览：`.docx` 可由前端 `docx-preview` 渲染，也可请求 `/projects/plan/{id}/preview-pdf` 由后端转 PDF。`.doc` 依赖 POI scratchpad 解析。
 
 ---
 

@@ -16,6 +16,8 @@ public interface ProjectPlanMapper {
      */
     List<ProjectPlan> listByProjectId(Integer projectId);
 
+    List<ProjectPlan> listAll();
+
     /**
      * 根据ID查询计划书
      */

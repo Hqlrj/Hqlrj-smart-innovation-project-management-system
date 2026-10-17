@@ -35,6 +35,8 @@ public class Project {
     private String reviewMode;
     private Integer aiTaskId;
     private String applicantCollege;
+    /** 仅 AI 按学号查询时使用：负责人 / 成员 */
+    private String relation;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")

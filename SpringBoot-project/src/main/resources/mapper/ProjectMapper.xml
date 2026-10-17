@@ -29,6 +29,7 @@
         <result property="updateTime" column="update_time"/>
         <result property="submitTime" column="submit_time"/>
         <result property="applicantCollege" column="applicant_college"/>
+        <result property="relation" column="relation"/>
     </resultMap>
 
     <!-- 查询项目列表（支持条件查询，关联用户表获取学院信息） -->
@@ -58,8 +59,50 @@
             <if test="applicantId != null">
                 AND p.applicant_id = #{applicantId}
             </if>
+            <if test="applicantCollege != null">
+                <choose>
+                    <when test="applicantCollege == ''">
+                        AND 1 = 0
+                    </when>
+                    <otherwise>
+                        AND u.college = #{applicantCollege}
+                    </otherwise>
+                </choose>
+            </if>
         </where>
         ORDER BY p.create_time DESC
+    </select>
+
+    <!-- 按学号查申报人账号或项目成员关联的项目 -->
+    <select id="listByStudentId" resultMap="projectResultMap">
+        SELECT p.id, p.project_type, p.project_name, p.project_intro, p.innovation_points, p.project_background,
+               p.project_significance, p.market_demand_analysis, p.key_technology, p.plan_file_path, p.plan_file_name,
+               p.status, p.applicant_id, p.applicant_name, p.auditor_name, p.reject_reason,
+               p.project_space, p.review_mode, p.ai_task_id,
+               p.create_time, p.update_time, p.submit_time,
+               u.college as applicant_college,
+               CASE WHEN u.student_id = #{studentId} THEN '负责人' ELSE '成员' END as relation
+        FROM project p
+        LEFT JOIN user u ON p.applicant_id = u.id
+        WHERE (
+            u.student_id = #{studentId}
+            OR EXISTS (
+                SELECT 1 FROM project_member m
+                WHERE m.project_id = p.id AND m.student_id = #{studentId}
+            )
+        )
+        <if test="applicantCollege != null">
+            <choose>
+                <when test="applicantCollege == ''">
+                    AND 1 = 0
+                </when>
+                <otherwise>
+                    AND u.college = #{applicantCollege}
+                </otherwise>
+            </choose>
+        </if>
+        ORDER BY p.create_time DESC
+        LIMIT #{limit}
     </select>
 
     <!-- 根据ID查询项目（关联用户表获取学院信息） -->

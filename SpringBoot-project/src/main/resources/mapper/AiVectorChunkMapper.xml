@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.example.springbootproject.mapper.AiVectorChunkMapper">
+
+    <resultMap id="chunkMap" type="org.example.springbootproject.pojo.AiVectorChunk">
+        <id property="id" column="id"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="sourceId" column="source_id"/>
+        <result property="projectId" column="project_id"/>
+        <result property="college" column="college"/>
+        <result property="title" column="title"/>
+        <result property="content" column="content"/>
+        <result property="embedding" column="embedding"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_vector_chunk (source_type, source_id, project_id, college, title, content, embedding, create_time)
+        VALUES (#{sourceType}, #{sourceId}, #{projectId}, #{college}, #{title}, #{content}, #{embedding}, NOW())
+    </insert>
+
+    <delete id="deleteBySource">
+        DELETE FROM ai_vector_chunk WHERE source_type = #{sourceType} AND source_id = #{sourceId}
+    </delete>
+
+    <select id="listForSearch" resultMap="chunkMap">
+        SELECT id, source_type, source_id, project_id, college, title, content, embedding, create_time
+        FROM ai_vector_chunk
+        <where>
+            <if test="projectId != null">
+                AND project_id = #{projectId}
+            </if>
+            <if test="college != null">
+                <choose>
+                    <when test="college == ''">
+                        AND 1 = 0
+                    </when>
+                    <otherwise>
+                        AND (college IS NULL OR college = '' OR college = #{college})
+                    </otherwise>
+                </choose>
+            </if>
+        </where>
+    </select>
+</mapper>

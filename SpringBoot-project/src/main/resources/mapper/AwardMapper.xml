@@ -41,9 +41,8 @@
         SELECT a.id, a.project_id, a.project_name, a.competition_name, a.competition_level,
                a.award_level, a.award_certificate, a.status, a.reject_reason, a.create_time, a.update_time
         FROM award a
-        <if test="applicantId != null">
-            INNER JOIN project p ON a.project_id = p.id
-        </if>
+        LEFT JOIN project p ON a.project_id = p.id
+        LEFT JOIN user u ON p.applicant_id = u.id
         <where>
             <if test="projectName != null and projectName != ''">
                 AND a.project_name LIKE CONCAT('%', #{projectName}, '%')
@@ -59,6 +58,16 @@
             </if>
             <if test="applicantId != null">
                 AND p.applicant_id = #{applicantId}
+            </if>
+            <if test="applicantCollege != null">
+                <choose>
+                    <when test="applicantCollege == ''">
+                        AND 1 = 0
+                    </when>
+                    <otherwise>
+                        AND u.college = #{applicantCollege}
+                    </otherwise>
+                </choose>
             </if>
         </where>
         ORDER BY a.create_time DESC

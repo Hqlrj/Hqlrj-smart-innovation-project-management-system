@@ -1,37 +1,37 @@
 <template>
   <div class="notice-publish-container">
-    <el-card shadow="never" class="form-card">
-      <div class="page-header">
-        <div class="page-icon">
-          <el-icon :size="18"><EditPen /></el-icon>
-        </div>
-        <div class="page-header-text">
-          <h2 class="page-title">发布公告</h2>
-          <p class="page-desc">撰写并发布系统公告，可设置置顶展示</p>
-        </div>
-      </div>
+    <div v-if="isProjectLeader" class="no-permission">
+      <el-result
+        icon="warning"
+        title="无发布权限"
+        sub-title="项目负责人不能发布公告，请联系管理员或项目管理员。"
+      />
+    </div>
 
-      <div v-if="isProjectLeader" class="no-permission">
-        <el-result
-          icon="warning"
-          title="无发布权限"
-          sub-title="项目负责人不能发布公告，请联系管理员或项目管理员。"
-        />
-      </div>
+    <div v-else class="publish-shell">
+      <el-card shadow="never" class="form-card">
+        <div class="page-header">
+          <div class="page-icon">
+            <el-icon :size="18"><EditPen /></el-icon>
+          </div>
+          <div class="page-header-text">
+            <h2 class="page-title">发布公告</h2>
+            <p class="page-desc">撰写并发布系统公告，可设置置顶展示</p>
+          </div>
+        </div>
 
-      <div v-else class="form-body">
         <el-form
           ref="formRef"
           :model="formData"
           :rules="rules"
-          label-width="80px"
+          label-width="72px"
           class="notice-form"
         >
           <el-form-item label="标题" prop="title">
             <div class="title-row">
               <el-input
                 v-model="formData.title"
-                placeholder="请输入公告标题"
+                placeholder="请输入公告标题，例如：本学期创新创业项目申报通知"
                 maxlength="50"
                 show-word-limit
                 clearable
@@ -47,12 +47,11 @@
             </div>
           </el-form-item>
 
-          <el-form-item label="内容" prop="content">
+          <el-form-item label="内容" prop="content" class="content-item">
             <el-input
               v-model="formData.content"
               type="textarea"
-              :rows="7"
-              placeholder="请输入公告正文内容"
+              placeholder="请输入公告正文，建议写清对象、时间、地点和注意事项"
               maxlength="2000"
               show-word-limit
               resize="none"
@@ -72,13 +71,37 @@
             立即发布
           </el-button>
         </div>
-      </div>
-    </el-card>
+      </el-card>
+
+      <aside class="side-panel">
+        <el-card shadow="never" class="preview-card">
+          <div class="side-title">实时预览</div>
+          <div class="preview-box">
+            <div class="preview-meta">
+              <el-tag v-if="formData.isTop === 1" type="danger" size="small">置顶</el-tag>
+              <span class="preview-role">{{ userRole || '当前账号' }}</span>
+            </div>
+            <h3>{{ formData.title || '公告标题将显示在这里' }}</h3>
+            <p class="preview-body">{{ formData.content || '输入正文后，这里会同步显示公告效果。' }}</p>
+          </div>
+        </el-card>
+
+        <el-card shadow="never" class="tips-card">
+          <div class="side-title">发布建议</div>
+          <ul class="tips-list">
+            <li>标题控制在 15–25 字，方便列表一眼看懂</li>
+            <li>正文写清对象、截止时间和办理入口</li>
+            <li>重要通知可开启置顶；对方查看后会从待查看列表移除，不再占着置顶位置</li>
+            <li>本院发布仅本院可见，系统管理员发布全校可见</li>
+          </ul>
+        </el-card>
+      </aside>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { EditPen, Promotion } from '@element-plus/icons-vue'
 import { addNotice, type Notice } from '@/api/notice'
@@ -95,10 +118,9 @@ const formData = ref<Partial<Notice>>({
   isTop: 0
 })
 
-// 不设置 trigger，仅在点击「立即发布」调用 validate 时校验
 const rules = ref<FormRules>({
-  title: [{ required: true, message: '请输入公告标题' }],
-  content: [{ required: true, message: '请输入公告内容' }]
+  title: [{ required: true, message: '请输入公告标题', trigger: 'blur' }],
+  content: [{ required: true, message: '请输入公告内容', trigger: 'blur' }]
 })
 
 const submitting = ref(false)
@@ -115,7 +137,7 @@ const handleSubmit = async () => {
     submitting.value = true
     await addNotice(formData.value)
     ElMessage.success('发布成功')
-    handleReset()
+    await handleReset()
   } catch (error: any) {
     if (error?.message && !error.message.includes('validate')) {
       ElMessage.error(error.message || '发布失败')
@@ -125,12 +147,12 @@ const handleSubmit = async () => {
   }
 }
 
-const handleReset = () => {
-  formData.value = {
-    title: '',
-    content: '',
-    isTop: 0
-  }
+const handleReset = async () => {
+  formRef.value?.resetFields()
+  formData.value.title = ''
+  formData.value.content = ''
+  formData.value.isTop = 0
+  await nextTick()
   formRef.value?.clearValidate()
 }
 </script>
@@ -138,21 +160,35 @@ const handleReset = () => {
 <style scoped>
 .notice-publish-container {
   padding: 16px 20px;
-  min-height: calc(100vh - 60px);
-  background:
-    radial-gradient(ellipse 80% 50% at 10% 0%, rgba(64, 158, 255, 0.07), transparent 55%),
-    #f5f7fa;
+  min-height: calc(100vh - 8px);
+  background: #f5f7fa;
+}
+
+.publish-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: stretch;
+  min-height: calc(100vh - 40px);
+}
+
+.form-card,
+.preview-card,
+.tips-card {
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
 }
 
 .form-card {
-  max-width: 780px;
-  margin: 0 auto;
-  border: 1px solid #ebeef5;
-  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 .form-card :deep(.el-card__body) {
-  padding: 18px 24px 16px;
+  padding: 18px 22px 16px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -172,7 +208,7 @@ const handleReset = () => {
   align-items: center;
   justify-content: center;
   color: #409eff;
-  background: linear-gradient(145deg, #ecf5ff 0%, #d9ecff 100%);
+  background: #ecf5ff;
   flex-shrink: 0;
 }
 
@@ -189,13 +225,24 @@ const handleReset = () => {
   color: #909399;
 }
 
-.notice-form :deep(.el-form-item) {
-  margin-bottom: 16px;
+.notice-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
-.notice-form :deep(.el-form-item__label) {
-  font-weight: 500;
-  color: #606266;
+.content-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.content-item :deep(.el-form-item__content) {
+  flex: 1;
+}
+
+.notice-form :deep(.el-form-item) {
+  margin-bottom: 16px;
 }
 
 .notice-form :deep(.el-input__wrapper),
@@ -203,9 +250,19 @@ const handleReset = () => {
   border-radius: 8px;
 }
 
+.content-textarea {
+  height: 100%;
+}
+
+.content-textarea :deep(.el-textarea) {
+  height: 100%;
+}
+
 .content-textarea :deep(.el-textarea__inner) {
-  padding: 10px 12px;
-  line-height: 1.6;
+  min-height: 320px;
+  height: 100%;
+  padding: 12px;
+  line-height: 1.7;
   font-size: 14px;
   background: #fafbfc;
 }
@@ -234,7 +291,6 @@ const handleReset = () => {
   background: #fafbfc;
   font-size: 13px;
   color: #606266;
-  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
 }
 
 .pin-inline.active {
@@ -247,38 +303,75 @@ const handleReset = () => {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: 8px;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.side-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #303133;
+  margin-bottom: 10px;
+}
+
+.preview-box {
+  min-height: 280px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px dashed #dcdfe6;
+}
+
+.preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.preview-box h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: #1f2d3d;
+  word-break: break-all;
+}
+
+.preview-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #606266;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tips-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.9;
 }
 
 .no-permission {
-  padding: 24px 0;
+  padding: 48px 0;
 }
 
-@media (max-width: 768px) {
-  .notice-publish-container {
-    padding: 12px;
+@media (max-width: 1100px) {
+  .publish-shell {
+    grid-template-columns: 1fr;
+    min-height: auto;
   }
 
-  .form-card :deep(.el-card__body) {
-    padding: 14px 14px 12px;
-  }
-
-  .title-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .pin-inline {
-    justify-content: space-between;
-    height: 36px;
-  }
-
-  .action-bar {
-    flex-direction: column-reverse;
-  }
-
-  .action-bar .el-button {
-    width: 100%;
+  .content-textarea :deep(.el-textarea__inner) {
+    min-height: 240px;
   }
 }
 </style>

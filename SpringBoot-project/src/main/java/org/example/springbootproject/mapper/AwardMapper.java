@@ -48,5 +48,6 @@ public interface AwardMapper {
                      @Param("competitionName") String competitionName,
                      @Param("competitionLevel") String competitionLevel,
                      @Param("awardLevel") String awardLevel,
-                     @Param("applicantId") Integer applicantId);
+                     @Param("applicantId") Integer applicantId,
+                     @Param("applicantCollege") String applicantCollege);
 }

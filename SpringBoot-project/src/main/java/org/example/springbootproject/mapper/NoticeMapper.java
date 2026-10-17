@@ -13,14 +13,17 @@ import java.util.List;
 public interface NoticeMapper {
 
     /**
-     * 公告列表（按时间倒序，可按标题模糊查询）
+     * 公告列表（按置顶+时间倒序，可按标题、已读状态筛选）
      */
-    List<Notice> list(@Param("title") String title);
+    List<Notice> list(@Param("title") String title,
+                      @Param("viewerCollege") String viewerCollege,
+                      @Param("userId") Integer userId,
+                      @Param("readStatus") String readStatus);
 
     /**
      * 根据ID查询公告
      */
-    Notice getById(Integer id);
+    Notice getById(@Param("id") Integer id, @Param("userId") Integer userId);
 
     /**
      * 新增公告
@@ -28,7 +31,17 @@ public interface NoticeMapper {
     void insert(Notice notice);
 
     /**
-     * 删除公告（目前保留接口，未在前端使用）
+     * 标记当前用户已读（重复阅读忽略）
+     */
+    void markRead(@Param("noticeId") Integer noticeId, @Param("userId") Integer userId);
+
+    /**
+     * 删除公告
      */
     void delete(Integer id);
+
+    /**
+     * 删除某公告的全部已读记录
+     */
+    void deleteReadsByNoticeId(Integer noticeId);
 }

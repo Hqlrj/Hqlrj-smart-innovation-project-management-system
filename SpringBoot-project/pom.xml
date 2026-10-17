@@ -116,6 +116,24 @@
             <artifactId>gson</artifactId>
             <version>2.10.1</version>
         </dependency>
+
+        <!-- Redis：会话记忆（Lettuce 客户端，启动失败时业务层回退内存） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- LangChain4j：Agent 编排 + DeepSeek（OpenAI 兼容）工具调用 -->
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j</artifactId>
+            <version>0.36.2</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.langchain4j</groupId>
+            <artifactId>langchain4j-open-ai</artifactId>
+            <version>0.36.2</version>
+        </dependency>
         
         <!-- Spring Boot Test -->
         <dependency>

@@ -24,12 +24,12 @@ public class AwardServiceImpl implements AwardService {
     @Override
     public PageBean<Award> list(Integer page, Integer pageSize, String projectName,
                                  String competitionName, String competitionLevel,
-                                 String awardLevel, Integer applicantId) {
+                                 String awardLevel, Integer applicantId, String applicantCollege) {
         // 设置分页参数
         PageHelper.startPage(page, pageSize);
 
         // 执行查询
-        List<Award> awardList = awardMapper.list(projectName, competitionName, competitionLevel, awardLevel, applicantId);
+        List<Award> awardList = awardMapper.list(projectName, competitionName, competitionLevel, awardLevel, applicantId, applicantCollege);
 
         // 获取分页信息
         Page<Award> p = (Page<Award>) awardList;

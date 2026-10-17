@@ -110,6 +110,11 @@ export const getProjectList = (params: ProjectQueryParams) => {
   return request.get<PageResult<Project>>('/projects', { params })
 }
 
+/** 项目一览：审核人等角色可取全校数据 */
+export const getOverviewData = () => {
+  return request.get<{ projects: Project[]; awards: Award[] }>('/projects/overview-data')
+}
+
 /**
  * 根据 ID 查询项目详情
  */

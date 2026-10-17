@@ -22,7 +22,9 @@ public class Notice {
     private Integer publisherId;     // 发布人ID
     private String publisherName;    // 发布人姓名
     private String publisherRole;    // 发布人角色
+    private String publisherCollege; // 发布人学院（查询时关联用户表）
     private Integer isTop;           // 是否置顶：0-否，1-是
+    private Integer isRead;          // 当前用户是否已读：0-未读，1-已读
     private String status;           // 状态：normal-正常
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
